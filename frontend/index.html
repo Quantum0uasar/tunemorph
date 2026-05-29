@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TuneMorph Piano</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    #status { font-size: 12px; color: #444; }
+    .piano { display: flex; user-select: none; margin-top: 16px; height: 220px; }
+    .white { width: 48px; background: #fff; border: 1px solid #ccc; border-radius: 4px; position: relative; }
+    .black { width: 30px; background: #111; color: #fff; border-radius: 4px; position: relative; z-index: 2; margin: 0 -15px; height: 140px; }
+    .key { display: flex; justify-content: center; align-items: flex-end; padding-bottom: 8px; cursor: pointer; }
+    .key span { opacity: 0.6; font-size: 12px; }
+    .key.active { outline: 3px solid #3b82f6; outline-offset: -3px; }
+    .black.active { background: #222; }
+    .row { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+    .note-roll { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color: #333; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <h1>TuneMorph Piano</h1>
+  <p>Click keys or use keyboard: <b>A W S E D F T G Y H U J K</b></p>
+
+  <div class="bar">
+    <button id="startAudio">Enable audio</button>
+    <button id="recordBtn" disabled>Start recording</button>
+    <button id="stopBtn" disabled>Stop recording</button>
+    <button id="refreshList">Refresh recordings</button>
+    <span id="status"></span>
+  </div>
+
+  <div class="row">
+    <div id="piano" class="piano" aria-label="piano keyboard"></div>
+    <div>
+      <div><b>Recent notes:</b></div>
+      <div id="noteRoll" class="note-roll"></div>
+    </div>
+    <div>
+      <div><b>Recordings (backend /recordings):</b></div>
+      <ul id="recordings"></ul>
+    </div>
+  </div>
+
+  <script>
+    // --- constants ---
+    const API_BASE = "http://localhost:8000";
+
+    const NOTE_ORDER = [
+      { note: "C4", key: "A", isBlack: false },
+      { note: "C#4", key: "W", isBlack: true },
+      { note: "D4", key: "S", isBlack: false },
+      { note: "D#4", key: "E", isBlack: true },
+      { note: "E4", key: "D", isBlack: false },
+      { note: "F4", key: "F", isBlack: false },
+      { note: "F#4", key: "T", isBlack: true },
+      { note: "G4", key: "G", isBlack: false },
+      { note: "G#4", key: "Y", isBlack: true },
+      { note: "A4", key: "H", isBlack: false },
+      { note: "A#4", key: "U", isBlack: true },
+      { note: "B4", key: "J", isBlack: false },
+      { note: "C5", key: "K", isBlack: false },
+    ];
+
+    // Equal tempered frequencies for A4=440
+    const FREQUENCIES = {
+      C4: 261.626, "C#4": 277.183, D4: 293.665, "D#4": 311.127, E4: 329.628,
+      F4: 349.228, "F#4": 369.994, G4: 391.995, "G#4": 415.305,
+      A4: 440.0, "A#4": 466.164, B4: 493.883, C5: 523.251,
+    };
+
+    const pianoEl = document.getElementById("piano");
+    const noteRoll = document.getElementById("noteRoll");
+    const recordingsEl = document.getElementById("recordings");
+
+    const status = (msg) => { document.getElementById("status").textContent = msg; };
+
+    let ctx = null;
+    let masterGain = null;
+    const playing = new Map();
+
+    let mediaRecorder = null;
+    let recordingChunks = [];
+
+    function ensureAudio() {
+      if (!ctx) {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = ctx.createGain();
+        masterGain.gain.value = 0.08;
+        masterGain.connect(ctx.destination);
+        status("Audio enabled");
+        document.getElementById("recordBtn").disabled = false;
+      }
+    }
+
+    function addNoteToRoll(note) {
+      noteRoll.textContent = (noteRoll.textContent + note + " ").slice(-80);
+    }
+
+    function playNote(note) {
+      ensureAudio();
+      if (playing.has(note)) return;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = FREQUENCIES[note] || 440;
+
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(1, ctx.currentTime + 0.005);
+
+      osc.connect(gain).connect(masterGain);
+      osc.start();
+
+      playing.set(note, { osc, gain });
+      addNoteToRoll(note);
+    }
+
+    function stopNote(note) {
+      const entry = playing.get(note);
+      if (!entry) return;
+      const { osc, gain } = entry;
+      gain.gain.cancelScheduledValues(ctx.currentTime);
+      gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.04);
+      osc.stop(ctx.currentTime + 0.05);
+      playing.delete(note);
+    }
+
+    function keyForEvent(evtKey) {
+      const upper = evtKey.toUpperCase();
+      return NOTE_ORDER.find((n) => n.key === upper);
+    }
+
+    function renderKeys() {
+      pianoEl.innerHTML = "";
+      NOTE_ORDER.forEach(({ note, key, isBlack }) => {
+        const keyEl = document.createElement("div");
+        keyEl.className = `key ${isBlack ? "black" : "white"}`;
+        keyEl.dataset.note = note;
+        keyEl.title = `${note} (${key})`;
+
+        const label = document.createElement("span");
+        label.textContent = key;
+        keyEl.appendChild(label);
+
+        keyEl.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          playNote(note);
+          keyEl.classList.add("active");
+        });
+
+        keyEl.addEventListener("pointerup", () => {
+          stopNote(note);
+          keyEl.classList.remove("active");
+        });
+
+        keyEl.addEventListener("pointerleave", () => {
+          stopNote(note);
+          keyEl.classList.remove("active");
+        });
+
+        pianoEl.appendChild(keyEl);
+      });
+    }
+
+    document.addEventListener("keydown", (e) => {
+      const mapping = keyForEvent(e.key);
+      if (!mapping) return;
+      e.preventDefault();
+      playNote(mapping.note);
+      const el = [...pianoEl.children].find((n) => n.dataset.note === mapping.note);
+      if (el) el.classList.add("active");
+    });
+
+    document.addEventListener("keyup", (e) => {
+      const mapping = keyForEvent(e.key);
+      if (!mapping) return;
+      e.preventDefault();
+      stopNote(mapping.note);
+      const el = [...pianoEl.children].find((n) => n.dataset.note === mapping.note);
+      if (el) el.classList.remove("active");
+    });
+
+    // --- recording ---
+    async function startRecording() {
+      try {
+        status("Requesting microphone...");
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        recordingChunks = [];
+
+        mediaRecorder.ondataavailable = (e) => e.data.size && recordingChunks.push(e.data);
+        mediaRecorder.onstop = () => uploadRecording();
+
+        mediaRecorder.start();
+        status("Recording...");
+        document.getElementById("recordBtn").disabled = true;
+        document.getElementById("stopBtn").disabled = false;
+      } catch (err) {
+        status("Mic permission denied or unavailable");
+      }
+    }
+
+    async function stopRecording() {
+      if (!mediaRecorder) return;
+      mediaRecorder.stop();
+      document.getElementById("recordBtn").disabled = false;
+      document.getElementById("stopBtn").disabled = true;
+    }
+
+    async function uploadRecording() {
+      try {
+        if (!recordingChunks.length) {
+          status("No audio captured");
+          return;
+        }
+        status("Uploading...");
+        const blob = new Blob(recordingChunks, { type: "audio/webm" });
+        const fd = new FormData();
+        fd.append("file", blob, `recording_${Date.now()}.webm`);
+
+        const res = await fetch(`${API_BASE}/recordings`, { method: "POST", body: fd });
+        if (!res.ok) throw new Error("upload failed");
+        await listRecordings();
+        status("Uploaded");
+      } catch (err) {
+        status("Upload error");
+      }
+    }
+
+    async function listRecordings() {
+      try {
+        const res = await fetch(`${API_BASE}/recordings`);
+        const items = await res.json();
+        recordingsEl.innerHTML = "";
+        items.forEach((item) => {
+          const li = document.createElement("li");
+          const link = document.createElement("a");
+          link.href = `${API_BASE}/recordings/${item.id}`;
+          link.textContent = `${item.filename} (${item.size_bytes} bytes)`;
+          link.target = "_blank";
+          li.appendChild(link);
+          recordingsEl.appendChild(li);
+        });
+      } catch (err) {
+        recordingsEl.innerHTML = "<li>Failed to load recordings</li>";
+      }
+    }
+
+    // --- init ---
+    renderKeys();
+
+    document.getElementById("startAudio").addEventListener("click", ensureAudio);
+    document.getElementById("recordBtn").addEventListener("click", startRecording);
+    document.getElementById("stopBtn").addEventListener("click", stopRecording);
+    document.getElementById("refreshList").addEventListener("click", listRecordings);
+
+    listRecordings();
+  </script>
+</body>
+</html>

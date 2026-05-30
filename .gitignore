@@ -216,3 +216,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# TuneMorph
+*.wav
+*.mp3
+*.ogg
+*.webm
+*.m4a
+samples/*.wav
+samples/*.mp3
+samples/*.ogg
+!samples/README.md
+
+# Node (if frontend tooling is added)
+node_modules/
+npm-debug.log*
+
+# Docker
+.docker/
+
+# macOS
+.DS_Store

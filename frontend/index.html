@@ -1,263 +1,1744 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>TuneMorph Piano</title>
+  <title>TuneMorph — Turn any sound into piano notes</title>
+  <meta name="description" content="Record or upload any audio and watch TuneMorph detect the notes and play them back on an interactive piano in real time." />
+  <meta property="og:title" content="TuneMorph" />
+  <meta property="og:description" content="Turn any sound into something you can play." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
-    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    #status { font-size: 12px; color: #444; }
-    .piano { display: flex; user-select: none; margin-top: 16px; height: 220px; }
-    .white { width: 48px; background: #fff; border: 1px solid #ccc; border-radius: 4px; position: relative; }
-    .black { width: 30px; background: #111; color: #fff; border-radius: 4px; position: relative; z-index: 2; margin: 0 -15px; height: 140px; }
-    .key { display: flex; justify-content: center; align-items: flex-end; padding-bottom: 8px; cursor: pointer; }
-    .key span { opacity: 0.6; font-size: 12px; }
-    .key.active { outline: 3px solid #3b82f6; outline-offset: -3px; }
-    .black.active { background: #222; }
-    .row { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
-    .note-roll { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color: #333; min-height: 18px; }
+    /* ─── Design Tokens ───────────────────────────────────── */
+    :root {
+      --font-body: 'Inter', system-ui, sans-serif;
+      --font-mono: 'Space Mono', 'Courier New', monospace;
+
+      --text-xs:   clamp(0.7rem,  0.65rem + 0.25vw, 0.8rem);
+      --text-sm:   clamp(0.8rem,  0.75rem + 0.25vw, 0.9rem);
+      --text-base: clamp(0.9rem,  0.85rem + 0.25vw, 1rem);
+      --text-lg:   clamp(1rem,    0.9rem  + 0.5vw,  1.25rem);
+      --text-xl:   clamp(1.25rem, 1rem    + 1vw,    1.75rem);
+      --text-2xl:  clamp(1.75rem, 1.2rem  + 2vw,    2.5rem);
+
+      --space-1: 0.25rem;
+      --space-2: 0.5rem;
+      --space-3: 0.75rem;
+      --space-4: 1rem;
+      --space-5: 1.25rem;
+      --space-6: 1.5rem;
+      --space-8: 2rem;
+      --space-10: 2.5rem;
+      --space-12: 3rem;
+      --space-16: 4rem;
+
+      --radius-sm: 0.375rem;
+      --radius-md: 0.5rem;
+      --radius-lg: 0.875rem;
+      --radius-xl: 1.25rem;
+
+      --transition: 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Dark mode (default) */
+    [data-theme="dark"] {
+      --bg:           #0d0d0f;
+      --surface:      #141416;
+      --surface-2:    #1a1a1e;
+      --surface-3:    #222228;
+      --border:       #2a2a32;
+      --border-2:     #35353f;
+      --text:         #e8e8f0;
+      --text-muted:   #888898;
+      --text-faint:   #444450;
+      --accent:       #7c6fff;
+      --accent-hover: #9487ff;
+      --accent-glow:  rgba(124, 111, 255, 0.25);
+      --accent-dim:   rgba(124, 111, 255, 0.12);
+      --green:        #3ecf8e;
+      --green-dim:    rgba(62, 207, 142, 0.15);
+      --red:          #ff6b6b;
+      --red-dim:      rgba(255, 107, 107, 0.15);
+      --amber:        #fbbf24;
+      --shadow-sm:    0 1px 3px rgba(0,0,0,0.4);
+      --shadow-md:    0 4px 16px rgba(0,0,0,0.5);
+      --shadow-lg:    0 12px 40px rgba(0,0,0,0.6);
+    }
+
+    /* Light mode */
+    [data-theme="light"] {
+      --bg:           #f5f5f8;
+      --surface:      #ffffff;
+      --surface-2:    #f8f8fb;
+      --surface-3:    #f0f0f5;
+      --border:       #e0e0ea;
+      --border-2:     #d0d0de;
+      --text:         #1a1a2e;
+      --text-muted:   #5a5a72;
+      --text-faint:   #aaaabc;
+      --accent:       #6055e8;
+      --accent-hover: #7c6fff;
+      --accent-glow:  rgba(96, 85, 232, 0.2);
+      --accent-dim:   rgba(96, 85, 232, 0.08);
+      --green:        #059669;
+      --green-dim:    rgba(5, 150, 105, 0.12);
+      --red:          #dc2626;
+      --red-dim:      rgba(220, 38, 38, 0.12);
+      --amber:        #d97706;
+      --shadow-sm:    0 1px 3px rgba(0,0,0,0.08);
+      --shadow-md:    0 4px 16px rgba(0,0,0,0.10);
+      --shadow-lg:    0 12px 40px rgba(0,0,0,0.14);
+    }
+
+    /* ─── Base Reset ───────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+    body {
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100dvh;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+    }
+    button { cursor: pointer; background: none; border: none; font: inherit; color: inherit; }
+    img, svg { display: block; max-width: 100%; }
+
+    /* ─── Layout ───────────────────────────────────────────── */
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-4) var(--space-6);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+    }
+    .logo-text {
+      font-size: var(--text-lg);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .logo-text span { color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: var(--space-3); }
+    .badge {
+      font-size: var(--text-xs);
+      font-family: var(--font-mono);
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent-glow);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .theme-btn {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-md);
+      color: var(--text-muted);
+      transition: color var(--transition), background var(--transition);
+    }
+    .theme-btn:hover { color: var(--text); background: var(--surface-3); }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 0;
+      max-height: calc(100dvh - 65px);
+      overflow: hidden;
+    }
+
+    /* ─── Sidebar ─────────────────────────────────────────── */
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .sidebar-section {
+      padding: var(--space-5) var(--space-6);
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-section:last-child { border-bottom: none; }
+    .section-label {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--text-faint);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: var(--space-4);
+    }
+
+    /* Audio input card */
+    .input-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .input-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .input-tab {
+      padding: var(--space-3) var(--space-4);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      text-align: center;
+      color: var(--text-muted);
+      transition: color var(--transition), background var(--transition);
+    }
+    .input-tab:hover { color: var(--text); }
+    .input-tab.active {
+      color: var(--accent);
+      background: var(--accent-dim);
+      border-bottom: 2px solid var(--accent);
+    }
+    .input-panel { padding: var(--space-4); display: none; }
+    .input-panel.active { display: block; }
+
+    /* Record panel */
+    .record-btn-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-4) 0;
+    }
+    .record-btn {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: var(--surface-3);
+      border: 2px solid var(--border-2);
+      display: flex; align-items: center; justify-content: center;
+      transition: all var(--transition);
+      position: relative;
+    }
+    .record-btn:hover { border-color: var(--red); background: var(--red-dim); }
+    .record-btn.recording {
+      border-color: var(--red);
+      background: var(--red-dim);
+      animation: pulse-ring 1.5s ease infinite;
+    }
+    .record-dot {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: border-radius var(--transition), transform var(--transition);
+    }
+    .record-btn.recording .record-dot {
+      border-radius: var(--radius-sm);
+      transform: scale(0.85);
+    }
+    @keyframes pulse-ring {
+      0%, 100% { box-shadow: 0 0 0 0 var(--red-dim); }
+      50% { box-shadow: 0 0 0 10px transparent; }
+    }
+    .record-label {
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .record-timer {
+      font-family: var(--font-mono);
+      font-size: var(--text-xl);
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.05em;
+      display: none;
+    }
+    .record-timer.visible { display: block; }
+
+    /* Waveform viz */
+    #waveformCanvas {
+      width: 100%;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: var(--surface-3);
+      display: block;
+    }
+
+    /* Upload panel */
+    .upload-zone {
+      border: 2px dashed var(--border-2);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8) var(--space-4);
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .upload-icon { color: var(--text-faint); margin-bottom: var(--space-1); }
+    .upload-zone:hover .upload-icon, .upload-zone.drag-over .upload-icon { color: var(--accent); }
+    .upload-text { font-size: var(--text-sm); font-weight: 500; }
+    .upload-subtext { font-size: var(--text-xs); color: var(--text-muted); }
+    #fileInput { display: none; }
+
+    /* Uploaded file display */
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      background: var(--surface-3);
+      border-radius: var(--radius-md);
+      margin-top: var(--space-3);
+    }
+    .file-info.visible { display: flex; }
+    .file-name {
+      font-size: var(--text-sm);
+      font-weight: 500;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-size { font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono); }
+    .file-remove { color: var(--text-faint); transition: color var(--transition); }
+    .file-remove:hover { color: var(--red); }
+
+    /* Analyze button */
+    .analyze-btn {
+      width: 100%;
+      padding: var(--space-3) var(--space-4);
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: var(--text-sm);
+      margin-top: var(--space-4);
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+    }
+    .analyze-btn:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 16px var(--accent-glow); }
+    .analyze-btn:active { transform: translateY(0); }
+    .analyze-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .analyze-btn .spinner {
+      display: none;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    .analyze-btn.loading .spinner { display: block; }
+    .analyze-btn.loading .btn-text { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Settings */
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-3);
+    }
+    .setting-row:last-child { margin-bottom: 0; }
+    .setting-label { font-size: var(--text-sm); color: var(--text-muted); }
+    .select-input {
+      background: var(--surface-3);
+      border: 1px solid var(--border-2);
+      color: var(--text);
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      font-family: var(--font-body);
+      outline: none;
+      cursor: pointer;
+      transition: border-color var(--transition);
+    }
+    .select-input:focus { border-color: var(--accent); }
+
+    /* Result info */
+    .result-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-3);
+    }
+    .stat-card {
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+    }
+    .stat-value {
+      font-size: var(--text-lg);
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--accent);
+    }
+    .stat-key { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; }
+
+    /* Note sequence display */
+    .note-sequence {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      word-break: break-all;
+      line-height: 1.8;
+      min-height: 36px;
+      padding: var(--space-3);
+      background: var(--surface-3);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+    }
+    .note-sequence .note-chip {
+      display: inline-block;
+      margin: 2px;
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent-glow);
+    }
+    .note-sequence .note-chip.active-chip {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--surface-3);
+      border-radius: var(--radius-md);
+      margin-top: var(--space-3);
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text-faint);
+      flex-shrink: 0;
+      transition: background var(--transition);
+    }
+    .status-dot.ready { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.processing { background: var(--amber); animation: blink 1s ease infinite; }
+    .status-dot.error { background: var(--red); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .status-text { font-size: var(--text-xs); color: var(--text-muted); }
+
+    /* ─── Main Content Area ────────────────────────────────── */
+    .content {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Piano area */
+    .piano-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-6) var(--space-8);
+      gap: var(--space-6);
+      overflow: hidden;
+    }
+
+    .piano-header {
+      text-align: center;
+    }
+    .piano-title {
+      font-size: var(--text-xl);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .piano-subtitle {
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+      margin-top: var(--space-1);
+    }
+
+    /* ─── Piano Keyboard ────────────────────────────────────── */
+    .piano-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .keyboard {
+      position: relative;
+      display: flex;
+      background: #1a1018;
+      border-radius: var(--radius-lg);
+      padding: var(--space-3) var(--space-3) 0;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.06),
+        0 20px 60px rgba(0,0,0,0.7),
+        0 4px 0 #0a0a0c,
+        inset 0 1px 0 rgba(255,255,255,0.04);
+      overflow: hidden;
+    }
+    [data-theme="light"] .keyboard {
+      background: #2d2235;
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.12),
+        0 20px 60px rgba(0,0,0,0.25),
+        0 4px 0 #1a1422,
+        inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+
+    .piano-keys {
+      display: flex;
+      position: relative;
+      gap: 3px;
+      padding-bottom: var(--space-3);
+    }
+
+    /* White keys */
+    .key-white {
+      width: 52px;
+      height: 160px;
+      background: linear-gradient(180deg, #f5f3f0 0%, #ffffff 30%, #f0ede8 100%);
+      border-radius: 0 0 var(--radius-md) var(--radius-md);
+      border: 1px solid #ccc;
+      border-top: none;
+      position: relative;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding-bottom: var(--space-2);
+      transition: all 80ms ease;
+      user-select: none;
+      box-shadow:
+        inset 0 -2px 4px rgba(0,0,0,0.08),
+        0 2px 6px rgba(0,0,0,0.3);
+    }
+    .key-white:active,
+    .key-white.pressed {
+      background: linear-gradient(180deg, #ddd8f0 0%, #e8e4ff 30%, #d8d4f0 100%);
+      transform: translateY(3px);
+      box-shadow: inset 0 2px 6px rgba(124,111,255,0.3), 0 0 0 2px var(--accent);
+    }
+    .key-white.highlight {
+      background: linear-gradient(180deg, #c8c0ff 0%, #d8d4ff 30%, #c0b8f0 100%);
+      box-shadow: 0 0 16px var(--accent-glow), 0 0 0 2px var(--accent), inset 0 2px 6px rgba(124,111,255,0.4);
+      transform: translateY(3px);
+    }
+    .key-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #aaa;
+      font-family: var(--font-mono);
+      letter-spacing: 0.02em;
+    }
+    .key-white.highlight .key-label,
+    .key-white.pressed .key-label { color: var(--accent); }
+    .key-note-name {
+      font-size: 9px;
+      color: #bbb;
+      font-family: var(--font-mono);
+    }
+    .key-white.highlight .key-note-name,
+    .key-white.pressed .key-note-name { color: var(--accent); }
+
+    /* Black keys */
+    .key-black {
+      width: 34px;
+      height: 100px;
+      background: linear-gradient(180deg, #222 0%, #1a1a1a 60%, #111 100%);
+      border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+      border: 1px solid #000;
+      border-top: 2px solid #333;
+      position: absolute;
+      top: var(--space-3);
+      cursor: pointer;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: var(--space-2);
+      transition: all 80ms ease;
+      user-select: none;
+      z-index: 2;
+      box-shadow:
+        2px 4px 8px rgba(0,0,0,0.7),
+        inset 0 -1px 0 #333;
+    }
+    .key-black:active,
+    .key-black.pressed {
+      background: linear-gradient(180deg, #3a2f6f 0%, #2d2460 60%, #1e1840 100%);
+      transform: translateY(3px);
+      box-shadow: 0 0 12px var(--accent-glow), 0 0 0 2px var(--accent);
+    }
+    .key-black.highlight {
+      background: linear-gradient(180deg, #6060e0 0%, #5050c0 60%, #3a3a9a 100%);
+      box-shadow: 0 0 20px var(--accent-glow), 0 0 0 2px var(--accent);
+      transform: translateY(3px);
+    }
+    .key-black .key-label {
+      color: #666;
+      font-size: 9px;
+    }
+    .key-black.highlight .key-label,
+    .key-black.pressed .key-label { color: #ccc; }
+
+    /* Piano octave labels */
+    .octave-labels {
+      display: flex;
+      width: 100%;
+      max-width: 900px;
+      padding: 0 calc(var(--space-3) + 3px);
+      justify-content: space-around;
+    }
+    .octave-label {
+      font-size: var(--text-xs);
+      color: var(--text-faint);
+      font-family: var(--font-mono);
+    }
+
+    /* ─── Playback Bar ─────────────────────────────────────── */
+    .playback-bar {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: var(--space-4) var(--space-8);
+      display: flex;
+      align-items: center;
+      gap: var(--space-6);
+    }
+    .playback-controls {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .play-btn {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .play-btn:hover { background: var(--accent-hover); transform: scale(1.05); box-shadow: 0 4px 16px var(--accent-glow); }
+    .play-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+    .control-btn {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-md);
+      color: var(--text-muted);
+      display: flex; align-items: center; justify-content: center;
+      transition: all var(--transition);
+    }
+    .control-btn:hover { color: var(--text); background: var(--surface-3); }
+    .control-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* Progress */
+    .progress-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .progress-track {
+      height: 4px;
+      background: var(--border);
+      border-radius: 99px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      width: 0%;
+      transition: width 100ms linear;
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+    .progress-times {
+      display: flex;
+      justify-content: space-between;
+      font-size: var(--text-xs);
+      color: var(--text-faint);
+      font-family: var(--font-mono);
+    }
+
+    /* Speed control */
+    .speed-control {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      white-space: nowrap;
+    }
+    .speed-label { font-size: var(--text-xs); color: var(--text-muted); }
+    .speed-value {
+      font-size: var(--text-xs);
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 2.5ch;
+      text-align: right;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 80px;
+      height: 4px;
+      border-radius: 99px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 6px var(--accent-glow);
+    }
+
+    /* ─── Loading overlay ──────────────────────────────────── */
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(13,13,15,0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-4);
+      z-index: 50;
+      backdrop-filter: blur(4px);
+      display: none;
+    }
+    .loading-overlay.visible { display: flex; }
+    .loading-wave {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 40px;
+    }
+    .loading-bar {
+      width: 6px;
+      background: var(--accent);
+      border-radius: 99px;
+      animation: wave-bar 0.8s ease-in-out infinite;
+    }
+    .loading-bar:nth-child(1) { animation-delay: 0ms; }
+    .loading-bar:nth-child(2) { animation-delay: 100ms; }
+    .loading-bar:nth-child(3) { animation-delay: 200ms; }
+    .loading-bar:nth-child(4) { animation-delay: 300ms; }
+    .loading-bar:nth-child(5) { animation-delay: 200ms; }
+    .loading-bar:nth-child(6) { animation-delay: 100ms; }
+    @keyframes wave-bar {
+      0%, 100% { height: 8px; opacity: 0.4; }
+      50% { height: 36px; opacity: 1; }
+    }
+    .loading-text {
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* ─── Empty / welcome state ────────────────────────────── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-3);
+      color: var(--text-faint);
+      text-align: center;
+      padding: var(--space-8);
+      flex: 1;
+    }
+    .empty-state svg { opacity: 0.3; }
+    .empty-title { font-size: var(--text-lg); font-weight: 600; color: var(--text-muted); }
+    .empty-sub { font-size: var(--text-sm); max-width: 300px; line-height: 1.5; }
+
+    /* ─── Responsive ───────────────────────────────────────── */
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; max-height: none; overflow: auto; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 60vh; }
+      .content { min-height: 70vh; }
+      .keyboard { overflow-x: auto; }
+      .playback-bar { flex-wrap: wrap; }
+      .piano-area { padding: var(--space-4); }
+    }
+
+    /* ─── Keyboard shortcut hint ───────────────────────────── */
+    .key-hints {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .hint-chip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: var(--text-xs);
+      color: var(--text-faint);
+    }
+    .hint-key {
+      background: var(--surface-3);
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* ─── Tooltip ─────────────────────────────────────────── */
+    [title] { cursor: help; }
   </style>
 </head>
 <body>
-  <h1>TuneMorph Piano</h1>
-  <p>Click keys or use keyboard: <b>A W S E D F T G Y H U J K</b></p>
 
-  <div class="bar">
-    <button id="startAudio">Enable audio</button>
-    <button id="recordBtn" disabled>Start recording</button>
-    <button id="stopBtn" disabled>Stop recording</button>
-    <button id="refreshList">Refresh recordings</button>
-    <span id="status"></span>
-  </div>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo">
+      <!-- SVG Logo -->
+      <svg class="logo-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="TuneMorph logo">
+        <rect width="36" height="36" rx="8" fill="#7c6fff" fill-opacity="0.15"/>
+        <!-- Sound wave left -->
+        <path d="M6 18 Q9 10 12 18 Q15 26 18 18" stroke="#7c6fff" stroke-width="2" stroke-linecap="round" fill="none"/>
+        <!-- Piano keys symbol -->
+        <rect x="19" y="12" width="4" height="14" rx="1" fill="#7c6fff" fill-opacity="0.8"/>
+        <rect x="24" y="12" width="4" height="14" rx="1" fill="#7c6fff" fill-opacity="0.5"/>
+        <rect x="29" y="12" width="4" height="14" rx="1" fill="#7c6fff" fill-opacity="0.3"/>
+        <!-- Black key -->
+        <rect x="21.5" y="12" width="2.5" height="8" rx="0.5" fill="#7c6fff"/>
+      </svg>
+      <span class="logo-text">Tune<span>Morph</span></span>
+    </div>
+    <div class="header-right">
+      <span class="badge">MVP</span>
+      <button class="theme-btn" data-theme-toggle aria-label="Toggle theme">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
 
-  <div class="row">
-    <div id="piano" class="piano" aria-label="piano keyboard"></div>
-    <div>
-      <div><b>Recent notes:</b></div>
-      <div id="noteRoll" class="note-roll"></div>
+  <main>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+      <!-- Audio Input -->
+      <div class="sidebar-section">
+        <div class="section-label">Audio Input</div>
+        <div class="input-card">
+          <div class="input-tabs">
+            <button class="input-tab active" data-tab="record" data-testid="tab-record">Record</button>
+            <button class="input-tab" data-tab="upload" data-testid="tab-upload">Upload</button>
+          </div>
+
+          <!-- Record panel -->
+          <div class="input-panel active" id="panel-record">
+            <div class="record-btn-wrap">
+              <button class="record-btn" id="recordBtn" data-testid="record-btn" aria-label="Start or stop recording">
+                <div class="record-dot"></div>
+              </button>
+              <div class="record-timer" id="recordTimer">0:00</div>
+              <span class="record-label" id="recordLabel">Click to record</span>
+            </div>
+            <canvas id="waveformCanvas" width="280" height="48" aria-hidden="true"></canvas>
+          </div>
+
+          <!-- Upload panel -->
+          <div class="input-panel" id="panel-upload">
+            <div class="upload-zone" id="uploadZone" data-testid="upload-zone" role="button" tabindex="0" aria-label="Upload audio file">
+              <svg class="upload-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <div class="upload-text">Drop audio file here</div>
+              <div class="upload-subtext">MP3, WAV, OGG, M4A, WEBM · max 20 MB</div>
+            </div>
+            <input type="file" id="fileInput" accept="audio/*" data-testid="file-input" />
+            <div class="file-info" id="fileInfo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              <span class="file-name" id="fileName">—</span>
+              <span class="file-size" id="fileSize">—</span>
+              <button class="file-remove" id="fileRemove" data-testid="file-remove" aria-label="Remove file">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analyze button -->
+        <button class="analyze-btn" id="analyzeBtn" data-testid="analyze-btn" disabled>
+          <div class="spinner"></div>
+          <span class="btn-text">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline;vertical-align:-2px;margin-right:6px">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            Detect Notes
+          </span>
+        </button>
+
+        <!-- Status -->
+        <div class="status-bar" id="statusBar">
+          <div class="status-dot" id="statusDot"></div>
+          <span class="status-text" id="statusText">Waiting for audio input…</span>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="sidebar-section">
+        <div class="section-label">Settings</div>
+        <div class="setting-row">
+          <span class="setting-label">Instrument</span>
+          <select class="select-input" id="instrumentSelect" data-testid="instrument-select">
+            <option value="piano">Piano</option>
+            <option value="guitar">Guitar</option>
+            <option value="voice">Voice / Hum</option>
+            <option value="any">Any</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Level</span>
+          <select class="select-input" id="levelSelect" data-testid="level-select">
+            <option value="beginner">Beginner</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="advanced">Advanced</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Octave range</span>
+          <select class="select-input" id="octaveSelect" data-testid="octave-select">
+            <option value="3-5">C3–C5</option>
+            <option value="4-6">C4–C6</option>
+            <option value="2-5">C2–C5</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="sidebar-section" id="resultsSection" style="display:none">
+        <div class="section-label">Analysis Results</div>
+        <div class="result-stats">
+          <div class="stat-card">
+            <div class="stat-value" id="statNotes">—</div>
+            <div class="stat-key">Notes detected</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statTempo">—</div>
+            <div class="stat-key">Est. BPM</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statKey">—</div>
+            <div class="stat-key">Key center</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statDur">—</div>
+            <div class="stat-key">Duration</div>
+          </div>
+        </div>
+        <div class="section-label" style="margin-top:var(--space-4)">Detected Sequence</div>
+        <div class="note-sequence" id="noteSequence" data-testid="note-sequence">—</div>
+        <div class="section-label" style="margin-top:var(--space-4)">Lesson Tip</div>
+        <p style="font-size:var(--text-sm);color:var(--text-muted);line-height:1.6" id="lessonTip">—</p>
+      </div>
+
+    </aside>
+
+    <!-- Main content -->
+    <div class="content" style="position:relative">
+
+      <!-- Loading overlay -->
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-wave">
+          <div class="loading-bar"></div>
+          <div class="loading-bar"></div>
+          <div class="loading-bar"></div>
+          <div class="loading-bar"></div>
+          <div class="loading-bar"></div>
+          <div class="loading-bar"></div>
+        </div>
+        <div class="loading-text" id="loadingText">Analyzing audio…</div>
+      </div>
+
+      <!-- Piano area -->
+      <div class="piano-area">
+        <div class="piano-header">
+          <h1 class="piano-title">Interactive Piano</h1>
+          <p class="piano-subtitle">Detected notes will light up and play automatically</p>
+        </div>
+
+        <div class="piano-wrap">
+          <div class="keyboard" id="keyboard" aria-label="Piano keyboard" role="group">
+            <div class="piano-keys" id="pianoKeys"></div>
+          </div>
+          <div class="key-hints" id="keyHints"></div>
+        </div>
+
+        <!-- Welcome / empty state -->
+        <div class="empty-state" id="emptyState">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+            <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+          <div class="empty-title">Ready to listen</div>
+          <div class="empty-sub">Record or upload audio, then hit "Detect Notes" — the piano will play the detected tune</div>
+        </div>
+      </div>
+
+      <!-- Playback bar -->
+      <div class="playback-bar">
+        <div class="playback-controls">
+          <button class="control-btn" id="rewindBtn" data-testid="rewind-btn" disabled title="Restart" aria-label="Restart">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+          </button>
+          <button class="play-btn" id="playBtn" data-testid="play-btn" disabled title="Play / Pause" aria-label="Play or pause">
+            <svg id="playIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <svg id="pauseIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+            </svg>
+          </button>
+          <button class="control-btn" id="loopBtn" data-testid="loop-btn" disabled title="Loop" aria-label="Toggle loop">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          </button>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress-track" id="progressTrack" role="slider" aria-label="Playback progress">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="progress-times">
+            <span id="timeElapsed">0:00</span>
+            <span id="timeDuration">0:00</span>
+          </div>
+        </div>
+
+        <div class="speed-control">
+          <span class="speed-label">Speed</span>
+          <input type="range" id="speedSlider" data-testid="speed-slider" min="0.25" max="2" step="0.25" value="1" aria-label="Playback speed" />
+          <span class="speed-value" id="speedValue">1×</span>
+        </div>
+      </div>
+
     </div>
-    <div>
-      <div><b>Recordings (backend /recordings):</b></div>
-      <ul id="recordings"></ul>
-    </div>
-  </div>
+  </main>
 
   <script>
-    // --- constants ---
-    const API_BASE = "http://localhost:8000";
+  /* ═══════════════════════════════════════════════════════════
+     TuneMorph — Frontend Logic
+     ─ Piano rendering (C2–C6, 4 octaves)
+     ─ WebAudio for playback (sine + ADSR)
+     ─ MediaRecorder for mic capture
+     ─ Waveform visualiser
+     ─ Pitch-to-MIDI detection (via backend)
+     ─ Animated key playback
+  ═══════════════════════════════════════════════════════════ */
 
-    const NOTE_ORDER = [
-      { note: "C4", key: "A", isBlack: false },
-      { note: "C#4", key: "W", isBlack: true },
-      { note: "D4", key: "S", isBlack: false },
-      { note: "D#4", key: "E", isBlack: true },
-      { note: "E4", key: "D", isBlack: false },
-      { note: "F4", key: "F", isBlack: false },
-      { note: "F#4", key: "T", isBlack: true },
-      { note: "G4", key: "G", isBlack: false },
-      { note: "G#4", key: "Y", isBlack: true },
-      { note: "A4", key: "H", isBlack: false },
-      { note: "A#4", key: "U", isBlack: true },
-      { note: "B4", key: "J", isBlack: false },
-      { note: "C5", key: "K", isBlack: false },
-    ];
+  // ── Config ─────────────────────────────────────────────────
+  const API_BASE = "http://localhost:8000";
 
-    // Equal tempered frequencies for A4=440
-    const FREQUENCIES = {
-      C4: 261.626, "C#4": 277.183, D4: 293.665, "D#4": 311.127, E4: 329.628,
-      F4: 349.228, "F#4": 369.994, G4: 391.995, "G#4": 415.305,
-      A4: 440.0, "A#4": 466.164, B4: 493.883, C5: 523.251,
-    };
+  // Build 4 octaves (C2–B5) + C6
+  const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const KEY_MAP = { // keyboard shortcuts for one octave block (C4 centre)
+    "C4":"a","C#4":"w","D4":"s","D#4":"e","E4":"d","F4":"f",
+    "F#4":"t","G4":"g","G#4":"y","A4":"h","A#4":"u","B4":"j",
+    "C5":"k","C#5":"o","D5":"l","D#5":"p","E5":";","F5":"'",
+  };
 
-    const pianoEl = document.getElementById("piano");
-    const noteRoll = document.getElementById("noteRoll");
-    const recordingsEl = document.getElementById("recordings");
+  function noteFreq(note, octave) {
+    const semitone = NOTE_NAMES.indexOf(note);
+    // A4 = 440 Hz, midi = (octave+1)*12 + semitone
+    const midi = (octave + 1) * 12 + semitone;
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
 
-    const status = (msg) => { document.getElementById("status").textContent = msg; };
-
-    let ctx = null;
-    let masterGain = null;
-    const playing = new Map();
-
-    let mediaRecorder = null;
-    let recordingChunks = [];
-
-    function ensureAudio() {
-      if (!ctx) {
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-        masterGain = ctx.createGain();
-        masterGain.gain.value = 0.08;
-        masterGain.connect(ctx.destination);
-        status("Audio enabled");
-        document.getElementById("recordBtn").disabled = false;
-      }
+  // Generate all keys for octaves 2-5 + C6
+  const ALL_KEYS = [];
+  for (let oct = 2; oct <= 5; oct++) {
+    for (const n of NOTE_NAMES) {
+      ALL_KEYS.push({ note: `${n}${oct}`, name: n, octave: oct, isBlack: n.includes('#') });
     }
+  }
+  ALL_KEYS.push({ note: "C6", name: "C", octave: 6, isBlack: false });
 
-    function addNoteToRoll(note) {
-      noteRoll.textContent = (noteRoll.textContent + note + " ").slice(-80);
-    }
+  // ── State ───────────────────────────────────────────────────
+  let audioCtx = null;
+  let masterGain = null;
+  const activeOscs = new Map(); // note → { osc, gain }
 
-    function playNote(note) {
-      ensureAudio();
-      if (playing.has(note)) return;
+  let mediaRecorder = null;
+  let recordingChunks = [];
+  let recordingBlob = null;
+  let uploadedFile = null;
+  let currentAudioBlob = null;
 
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = FREQUENCIES[note] || 440;
+  let detectedNotes = []; // array of { note, duration }
+  let playbackIndex = 0;
+  let playbackTimer = null;
+  let isPlaying = false;
+  let isLooping = false;
+  let playbackSpeed = 1;
+  let currentNoteIdx = 0;
+  let recordingSeconds = 0;
+  let recordTimer = null;
 
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(1, ctx.currentTime + 0.005);
+  let analyserNode = null;
+  let waveAnimId = null;
 
-      osc.connect(gain).connect(masterGain);
-      osc.start();
+  // ── DOM refs ────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const pianoKeys = $("pianoKeys");
+  const analyzeBtn = $("analyzeBtn");
+  const recordBtn = $("recordBtn");
+  const recordTimerEl = $("recordTimer");
+  const recordLabel = $("recordLabel");
+  const uploadZone = $("uploadZone");
+  const fileInput = $("fileInput");
+  const fileInfo = $("fileInfo");
+  const fileName = $("fileName");
+  const fileSize = $("fileSize");
+  const fileRemove = $("fileRemove");
+  const playBtn = $("playBtn");
+  const rewindBtn = $("rewindBtn");
+  const loopBtn = $("loopBtn");
+  const progressFill = $("progressFill");
+  const timeElapsed = $("timeElapsed");
+  const timeDuration = $("timeDuration");
+  const speedSlider = $("speedSlider");
+  const speedValue = $("speedValue");
+  const statusDot = $("statusDot");
+  const statusText = $("statusText");
+  const loadingOverlay = $("loadingOverlay");
+  const emptyState = $("emptyState");
+  const resultsSection = $("resultsSection");
+  const noteSequenceEl = $("noteSequence");
+  const waveCanvas = $("waveformCanvas");
+  const waveCtx = waveCanvas.getContext("2d");
+  const keyHints = $("keyHints");
 
-      playing.set(note, { osc, gain });
-      addNoteToRoll(note);
-    }
-
-    function stopNote(note) {
-      const entry = playing.get(note);
-      if (!entry) return;
-      const { osc, gain } = entry;
-      gain.gain.cancelScheduledValues(ctx.currentTime);
-      gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.04);
-      osc.stop(ctx.currentTime + 0.05);
-      playing.delete(note);
-    }
-
-    function keyForEvent(evtKey) {
-      const upper = evtKey.toUpperCase();
-      return NOTE_ORDER.find((n) => n.key === upper);
-    }
-
-    function renderKeys() {
-      pianoEl.innerHTML = "";
-      NOTE_ORDER.forEach(({ note, key, isBlack }) => {
-        const keyEl = document.createElement("div");
-        keyEl.className = `key ${isBlack ? "black" : "white"}`;
-        keyEl.dataset.note = note;
-        keyEl.title = `${note} (${key})`;
-
-        const label = document.createElement("span");
-        label.textContent = key;
-        keyEl.appendChild(label);
-
-        keyEl.addEventListener("pointerdown", (e) => {
-          e.preventDefault();
-          playNote(note);
-          keyEl.classList.add("active");
-        });
-
-        keyEl.addEventListener("pointerup", () => {
-          stopNote(note);
-          keyEl.classList.remove("active");
-        });
-
-        keyEl.addEventListener("pointerleave", () => {
-          stopNote(note);
-          keyEl.classList.remove("active");
-        });
-
-        pianoEl.appendChild(keyEl);
-      });
-    }
-
-    document.addEventListener("keydown", (e) => {
-      const mapping = keyForEvent(e.key);
-      if (!mapping) return;
-      e.preventDefault();
-      playNote(mapping.note);
-      const el = [...pianoEl.children].find((n) => n.dataset.note === mapping.note);
-      if (el) el.classList.add("active");
+  // ── Theme toggle ────────────────────────────────────────────
+  (function() {
+    const root = document.documentElement;
+    const btn = document.querySelector("[data-theme-toggle]");
+    let current = root.getAttribute("data-theme") || "dark";
+    root.setAttribute("data-theme", current);
+    updateThemeIcon(btn, current);
+    btn.addEventListener("click", () => {
+      current = current === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", current);
+      updateThemeIcon(btn, current);
     });
+    function updateThemeIcon(b, theme) {
+      b.innerHTML = theme === "dark"
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`
+        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+    }
+  })();
 
-    document.addEventListener("keyup", (e) => {
-      const mapping = keyForEvent(e.key);
-      if (!mapping) return;
-      e.preventDefault();
-      stopNote(mapping.note);
-      const el = [...pianoEl.children].find((n) => n.dataset.note === mapping.note);
-      if (el) el.classList.remove("active");
+  // ── Tab switching ───────────────────────────────────────────
+  document.querySelectorAll(".input-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".input-tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".input-panel").forEach(p => p.classList.remove("active"));
+      tab.classList.add("active");
+      $(`panel-${tab.dataset.tab}`).classList.add("active");
     });
+  });
 
-    // --- recording ---
-    async function startRecording() {
-      try {
-        status("Requesting microphone...");
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        recordingChunks = [];
+  // ── Audio context ───────────────────────────────────────────
+  function ensureAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.5;
+    masterGain.connect(audioCtx.destination);
+  }
 
-        mediaRecorder.ondataavailable = (e) => e.data.size && recordingChunks.push(e.data);
-        mediaRecorder.onstop = () => uploadRecording();
+  function playNoteSound(note, duration = 0.5) {
+    ensureAudio();
+    const { name, octave } = ALL_KEYS.find(k => k.note === note) || {};
+    if (!name) return;
+    const freq = noteFreq(name, octave);
 
-        mediaRecorder.start();
-        status("Recording...");
-        document.getElementById("recordBtn").disabled = true;
-        document.getElementById("stopBtn").disabled = false;
-      } catch (err) {
-        status("Mic permission denied or unavailable");
-      }
-    }
+    const osc = audioCtx.createOscillator();
+    const envGain = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
 
-    async function stopRecording() {
-      if (!mediaRecorder) return;
-      mediaRecorder.stop();
-      document.getElementById("recordBtn").disabled = false;
-      document.getElementById("stopBtn").disabled = true;
-    }
+    // ADSR envelope
+    const t = audioCtx.currentTime;
+    const attack = 0.005;
+    const decay = 0.08;
+    const sustain = 0.6;
+    const release = 0.25;
+    envGain.gain.setValueAtTime(0, t);
+    envGain.gain.linearRampToValueAtTime(1, t + attack);
+    envGain.gain.linearRampToValueAtTime(sustain, t + attack + decay);
+    envGain.gain.setValueAtTime(sustain, t + duration - release);
+    envGain.gain.linearRampToValueAtTime(0, t + duration);
 
-    async function uploadRecording() {
-      try {
-        if (!recordingChunks.length) {
-          status("No audio captured");
-          return;
+    osc.connect(envGain).connect(masterGain);
+    osc.start(t);
+    osc.stop(t + duration + 0.05);
+  }
+
+  function pressKey(note) {
+    const el = pianoKeys.querySelector(`[data-note="${note}"]`);
+    if (el) el.classList.add("highlight");
+  }
+
+  function releaseKey(note) {
+    const el = pianoKeys.querySelector(`[data-note="${note}"]`);
+    if (el) el.classList.remove("highlight");
+  }
+
+  // ── Keyboard construction ───────────────────────────────────
+  function buildKeyboard() {
+    pianoKeys.innerHTML = "";
+    keyHints.innerHTML = "";
+
+    // We lay out white keys inline, black keys absolutely offset
+    const whites = ALL_KEYS.filter(k => !k.isBlack);
+    const whiteWidth = 52 + 3; // key width + gap
+
+    // Container needs explicit width for black key positioning
+    const totalWhites = whites.length;
+    pianoKeys.style.width = (totalWhites * whiteWidth - 3) + "px";
+
+    // Track cumulative white index
+    let whiteIdx = 0;
+
+    // Black key offsets within an octave (relative to C)
+    // Positions: C#=1, D#=2, F#=4, G#=5, A#=6 (0-indexed half positions)
+    const blackOffsets = { "C#": 1, "D#": 2, "F#": 4, "G#": 5, "A#": 6 };
+
+    ALL_KEYS.forEach((key) => {
+      const el = document.createElement("div");
+      el.dataset.note = key.note;
+      el.setAttribute("role", "button");
+      el.setAttribute("aria-label", `${key.note} piano key`);
+      el.setAttribute("tabindex", "0");
+
+      if (key.isBlack) {
+        el.className = "key-black";
+        // Find position based on preceding white key index
+        const octaveStart = whites.findIndex(w => w.octave === key.octave && w.name === "C");
+        const noteInOctave = NOTE_NAMES.indexOf(key.name);
+        // Count whites before this black key in the octave
+        const whitesBefore = NOTE_NAMES.slice(0, noteInOctave).filter(n => !n.includes("#")).length;
+        const absWhiteIdx = whites.findIndex(w => w.octave === key.octave && !w.isBlack &&
+          NOTE_NAMES.indexOf(w.name) > noteInOctave) - 1;
+
+        // Calculate actual white index by iterating
+        let wCount = 0;
+        for (const k2 of ALL_KEYS) {
+          if (k2.note === key.note) break;
+          if (!k2.isBlack) wCount++;
         }
-        status("Uploading...");
+        // Position black key between the surrounding whites
+        const leftOffset = wCount * whiteWidth - 17; // center over gap
+        el.style.left = leftOffset + "px";
+
+        const labelEl = document.createElement("div");
+        labelEl.className = "key-label";
+        labelEl.textContent = KEY_MAP[key.note] ? KEY_MAP[key.note].toUpperCase() : "";
+        el.appendChild(labelEl);
+
+        pianoKeys.appendChild(el);
+      } else {
+        el.className = "key-white";
+        const labelEl = document.createElement("div");
+        labelEl.className = "key-label";
+        labelEl.textContent = KEY_MAP[key.note] ? KEY_MAP[key.note].toUpperCase() : "";
+        const noteEl = document.createElement("div");
+        noteEl.className = "key-note-name";
+        // Show note name on C keys as octave marker
+        noteEl.textContent = key.name === "C" ? key.note : "";
+        el.appendChild(noteEl);
+        el.appendChild(labelEl);
+
+        pianoKeys.appendChild(el);
+        whiteIdx++;
+      }
+
+      // Pointer events
+      el.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        ensureAudio();
+        playNoteSound(key.note, 0.8);
+        el.classList.add("pressed");
+      });
+      el.addEventListener("pointerup", () => el.classList.remove("pressed"));
+      el.addEventListener("pointerleave", () => el.classList.remove("pressed"));
+    });
+  }
+
+  // ── Keyboard shortcuts ──────────────────────────────────────
+  document.addEventListener("keydown", (e) => {
+    if (e.repeat || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    const note = Object.entries(KEY_MAP).find(([n, k]) => k === e.key.toLowerCase())?.[0];
+    if (!note) return;
+    ensureAudio();
+    playNoteSound(note, 0.6);
+    const el = pianoKeys.querySelector(`[data-note="${note}"]`);
+    if (el) el.classList.add("pressed");
+  });
+  document.addEventListener("keyup", (e) => {
+    const note = Object.entries(KEY_MAP).find(([n, k]) => k === e.key.toLowerCase())?.[0];
+    if (!note) return;
+    const el = pianoKeys.querySelector(`[data-note="${note}"]`);
+    if (el) el.classList.remove("pressed");
+  });
+
+  // ── Waveform visualiser ─────────────────────────────────────
+  function drawIdleWave() {
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    waveCtx.strokeStyle = isDark ? "#333340" : "#dddde8";
+    waveCtx.lineWidth = 1.5;
+    waveCtx.beginPath();
+    const mid = waveCanvas.height / 2;
+    waveCtx.moveTo(0, mid);
+    waveCtx.lineTo(waveCanvas.width, mid);
+    waveCtx.stroke();
+  }
+
+  function drawLiveWave() {
+    if (!analyserNode) { drawIdleWave(); return; }
+    const buf = new Uint8Array(analyserNode.fftSize);
+    analyserNode.getByteTimeDomainData(buf);
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    waveCtx.lineWidth = 2;
+    waveCtx.strokeStyle = "#7c6fff";
+    waveCtx.beginPath();
+    const sliceW = waveCanvas.width / buf.length;
+    let x = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = buf[i] / 128.0;
+      const y = (v * waveCanvas.height) / 2;
+      i === 0 ? waveCtx.moveTo(x, y) : waveCtx.lineTo(x, y);
+      x += sliceW;
+    }
+    waveCtx.lineTo(waveCanvas.width, waveCanvas.height / 2);
+    waveCtx.stroke();
+    waveAnimId = requestAnimationFrame(drawLiveWave);
+  }
+
+  // ── Recording ───────────────────────────────────────────────
+  recordBtn.addEventListener("click", async () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      stopRecording();
+    } else {
+      await startRecording();
+    }
+  });
+
+  async function startRecording() {
+    try {
+      setStatus("processing", "Requesting microphone access…");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Set up analyser for waveform
+      ensureAudio();
+      const source = audioCtx.createMediaStreamSource(stream);
+      analyserNode = audioCtx.createAnalyser();
+      analyserNode.fftSize = 512;
+      source.connect(analyserNode);
+      drawLiveWave();
+
+      mediaRecorder = new MediaRecorder(stream);
+      recordingChunks = [];
+      mediaRecorder.ondataavailable = (e) => e.data.size && recordingChunks.push(e.data);
+      mediaRecorder.onstop = () => {
         const blob = new Blob(recordingChunks, { type: "audio/webm" });
-        const fd = new FormData();
-        fd.append("file", blob, `recording_${Date.now()}.webm`);
+        recordingBlob = blob;
+        currentAudioBlob = blob;
+        analyzeBtn.disabled = false;
+        setStatus("ready", `Recording saved — ${formatBytes(blob.size)}`);
+        cancelAnimationFrame(waveAnimId);
+        drawIdleWave();
+        analyserNode = null;
+      };
+      mediaRecorder.start();
 
-        const res = await fetch(`${API_BASE}/recordings`, { method: "POST", body: fd });
-        if (!res.ok) throw new Error("upload failed");
-        await listRecordings();
-        status("Uploaded");
-      } catch (err) {
-        status("Upload error");
+      recordBtn.classList.add("recording");
+      recordLabel.textContent = "Recording… (click to stop)";
+      setStatus("processing", "Recording in progress…");
+
+      // Timer
+      recordingSeconds = 0;
+      recordTimerEl.textContent = "0:00";
+      recordTimerEl.classList.add("visible");
+      recordTimer = setInterval(() => {
+        recordingSeconds++;
+        const m = Math.floor(recordingSeconds / 60);
+        const s = recordingSeconds % 60;
+        recordTimerEl.textContent = `${m}:${s.toString().padStart(2,"0")}`;
+      }, 1000);
+
+    } catch (err) {
+      setStatus("error", "Microphone permission denied");
+    }
+  }
+
+  function stopRecording() {
+    if (!mediaRecorder) return;
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+    clearInterval(recordTimer);
+    recordBtn.classList.remove("recording");
+    recordLabel.textContent = "Click to record";
+    recordTimerEl.classList.remove("visible");
+  }
+
+  // ── Upload ──────────────────────────────────────────────────
+  uploadZone.addEventListener("click", () => fileInput.click());
+  uploadZone.addEventListener("keydown", (e) => e.key === "Enter" && fileInput.click());
+
+  uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("drag-over"); });
+  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("drag-over"));
+  uploadZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+
+  fileRemove.addEventListener("click", () => {
+    uploadedFile = null;
+    currentAudioBlob = null;
+    fileInfo.classList.remove("visible");
+    analyzeBtn.disabled = true;
+    setStatus("", "Waiting for audio input…");
+    fileInput.value = "";
+  });
+
+  function handleFile(file) {
+    if (!file.type.startsWith("audio/")) {
+      setStatus("error", "Please upload an audio file");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setStatus("error", "File too large — max 20 MB");
+      return;
+    }
+    uploadedFile = file;
+    currentAudioBlob = file;
+    fileName.textContent = file.name;
+    fileSize.textContent = formatBytes(file.size);
+    fileInfo.classList.add("visible");
+    analyzeBtn.disabled = false;
+    setStatus("ready", `File ready — ${formatBytes(file.size)}`);
+  }
+
+  // ── Analysis ────────────────────────────────────────────────
+  analyzeBtn.addEventListener("click", async () => {
+    if (!currentAudioBlob) return;
+    await analyzeAudio(currentAudioBlob);
+  });
+
+  async function analyzeAudio(blob) {
+    analyzeBtn.disabled = true;
+    analyzeBtn.classList.add("loading");
+    loadingOverlay.classList.add("visible");
+    $("loadingText").textContent = "Uploading audio…";
+    setStatus("processing", "Sending audio to backend…");
+
+    try {
+      const fd = new FormData();
+      fd.append("file", blob, blob.name || `recording_${Date.now()}.webm`);
+      fd.append("instrument", $("instrumentSelect").value);
+      fd.append("level", $("levelSelect").value);
+
+      $("loadingText").textContent = "Detecting notes…";
+      const res = await fetch(`${API_BASE}/analyze`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Server error" }));
+        throw new Error(err.detail || "Analysis failed");
+      }
+
+      const data = await res.json();
+      $("loadingText").textContent = "Building piano sequence…";
+      await new Promise(r => setTimeout(r, 300)); // brief pause for UX
+
+      handleAnalysisResult(data);
+      setStatus("ready", `Found ${data.analysis.detected_notes.length} notes`);
+
+    } catch (err) {
+      console.error(err);
+      setStatus("error", err.message || "Analysis failed — is the backend running?");
+      loadingOverlay.classList.remove("visible");
+
+      // Fallback demo mode if backend is offline
+      if (err.message.includes("fetch") || err.message.includes("Failed")) {
+        loadDemoMode();
+      }
+    } finally {
+      analyzeBtn.classList.remove("loading");
+      analyzeBtn.disabled = false;
+      loadingOverlay.classList.remove("visible");
+    }
+  }
+
+  function handleAnalysisResult(data) {
+    const { detected_notes, tempo, key_center, duration, lesson } = data.analysis;
+
+    // Update stats
+    $("statNotes").textContent = detected_notes.length;
+    $("statTempo").textContent = tempo ? Math.round(tempo) : "—";
+    $("statKey").textContent = key_center || "—";
+    $("statDur").textContent = duration ? `${duration.toFixed(1)}s` : "—";
+    $("lessonTip").textContent = lesson || "Practice slowly, one note at a time.";
+
+    // Build note sequence display
+    renderNoteChips(detected_notes);
+
+    // Build playback sequence
+    // Each note gets a duration of ~0.4s at 1× speed; adjust if we have duration info
+    detectedNotes = detected_notes.map((n, i) => ({
+      note: n.note || n,
+      duration: n.duration || 0.5,
+    }));
+
+    // Total duration
+    const totalDur = detectedNotes.reduce((s, n) => s + n.duration, 0);
+    timeDuration.textContent = formatTime(totalDur);
+    timeElapsed.textContent = "0:00";
+    progressFill.style.width = "0%";
+
+    // Enable controls
+    playBtn.disabled = false;
+    rewindBtn.disabled = false;
+    loopBtn.disabled = false;
+    emptyState.style.display = "none";
+    resultsSection.style.display = "block";
+    currentNoteIdx = 0;
+  }
+
+  function loadDemoMode() {
+    // Offline demo: play a C major scale
+    const demoNotes = ["C4","E4","G4","C5","G4","E4","D4","F4","A4","C5","B4","G4","E4","C4"];
+    handleAnalysisResult({
+      analysis: {
+        detected_notes: demoNotes.map(n => ({ note: n, duration: 0.45 })),
+        tempo: 120,
+        key_center: "C",
+        duration: demoNotes.length * 0.45,
+        lesson: "Demo mode — backend offline. This is a C major scale for practice.",
+      }
+    });
+    setStatus("ready", "Demo mode — backend offline");
+  }
+
+  function renderNoteChips(notes) {
+    noteSequenceEl.innerHTML = "";
+    notes.forEach((n, i) => {
+      const chip = document.createElement("span");
+      chip.className = "note-chip";
+      chip.dataset.idx = i;
+      chip.textContent = typeof n === "string" ? n : n.note;
+      noteSequenceEl.appendChild(chip);
+    });
+  }
+
+  // ── Playback engine ─────────────────────────────────────────
+  let playbackElapsed = 0;
+  let playbackStartTime = null;
+  let playbackRAF = null;
+
+  playBtn.addEventListener("click", () => {
+    if (isPlaying) pausePlayback();
+    else startPlayback();
+  });
+
+  rewindBtn.addEventListener("click", () => {
+    stopPlayback();
+    currentNoteIdx = 0;
+    playbackElapsed = 0;
+    progressFill.style.width = "0%";
+    timeElapsed.textContent = "0:00";
+    // Release all highlighted keys
+    document.querySelectorAll(".key-white.highlight, .key-black.highlight").forEach(k => k.classList.remove("highlight"));
+  });
+
+  loopBtn.addEventListener("click", () => {
+    isLooping = !isLooping;
+    loopBtn.style.color = isLooping ? "var(--accent)" : "";
+  });
+
+  speedSlider.addEventListener("input", () => {
+    playbackSpeed = parseFloat(speedSlider.value);
+    speedValue.textContent = playbackSpeed + "×";
+  });
+
+  function startPlayback() {
+    if (!detectedNotes.length) return;
+    ensureAudio();
+    isPlaying = true;
+    $("playIcon").style.display = "none";
+    $("pauseIcon").style.display = "block";
+
+    scheduleNotes();
+  }
+
+  function pausePlayback() {
+    isPlaying = false;
+    $("playIcon").style.display = "block";
+    $("pauseIcon").style.display = "none";
+    clearTimeout(playbackTimer);
+    cancelAnimationFrame(playbackRAF);
+    // Release all highlighted keys
+    document.querySelectorAll(".key-white.highlight, .key-black.highlight").forEach(k => k.classList.remove("highlight"));
+  }
+
+  function stopPlayback() {
+    pausePlayback();
+    currentNoteIdx = 0;
+    playbackElapsed = 0;
+  }
+
+  function scheduleNotes() {
+    if (!isPlaying) return;
+    if (currentNoteIdx >= detectedNotes.length) {
+      if (isLooping) {
+        currentNoteIdx = 0;
+        playbackElapsed = 0;
+      } else {
+        pausePlayback();
+        return;
       }
     }
 
-    async function listRecordings() {
-      try {
-        const res = await fetch(`${API_BASE}/recordings`);
-        const items = await res.json();
-        recordingsEl.innerHTML = "";
-        items.forEach((item) => {
-          const li = document.createElement("li");
-          const link = document.createElement("a");
-          link.href = `${API_BASE}/recordings/${item.id}`;
-          link.textContent = `${item.filename} (${item.size_bytes} bytes)`;
-          link.target = "_blank";
-          li.appendChild(link);
-          recordingsEl.appendChild(li);
-        });
-      } catch (err) {
-        recordingsEl.innerHTML = "<li>Failed to load recordings</li>";
-      }
+    const { note, duration } = detectedNotes[currentNoteIdx];
+    const noteDur = duration / playbackSpeed;
+
+    // Highlight chip
+    document.querySelectorAll(".note-chip").forEach(c => c.classList.remove("active-chip"));
+    const chip = noteSequenceEl.querySelector(`[data-idx="${currentNoteIdx}"]`);
+    if (chip) {
+      chip.classList.add("active-chip");
+      chip.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
 
-    // --- init ---
-    renderKeys();
+    // Play sound + visual
+    playNoteSound(note, noteDur * 0.9);
+    pressKey(note);
 
-    document.getElementById("startAudio").addEventListener("click", ensureAudio);
-    document.getElementById("recordBtn").addEventListener("click", startRecording);
-    document.getElementById("stopBtn").addEventListener("click", stopRecording);
-    document.getElementById("refreshList").addEventListener("click", listRecordings);
+    // Release key after duration
+    setTimeout(() => releaseKey(note), noteDur * 900);
 
-    listRecordings();
+    // Update progress
+    updateProgress();
+
+    currentNoteIdx++;
+    playbackElapsed += duration;
+
+    playbackTimer = setTimeout(scheduleNotes, noteDur * 1000);
+  }
+
+  function updateProgress() {
+    const total = detectedNotes.reduce((s, n) => s + n.duration, 0);
+    const elapsed = detectedNotes.slice(0, currentNoteIdx).reduce((s, n) => s + n.duration, 0);
+    const pct = total > 0 ? (elapsed / total) * 100 : 0;
+    progressFill.style.width = pct + "%";
+    timeElapsed.textContent = formatTime(elapsed / playbackSpeed);
+  }
+
+  // Click on progress bar to seek
+  $("progressTrack").addEventListener("click", (e) => {
+    if (!detectedNotes.length) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    const total = detectedNotes.reduce((s, n) => s + n.duration, 0);
+    let elapsed = 0;
+    let idx = 0;
+    for (let i = 0; i < detectedNotes.length; i++) {
+      if ((elapsed + detectedNotes[i].duration) / total >= pct) { idx = i; break; }
+      elapsed += detectedNotes[i].duration;
+      idx = i + 1;
+    }
+    const wasPlaying = isPlaying;
+    pausePlayback();
+    currentNoteIdx = idx;
+    playbackElapsed = elapsed;
+    progressFill.style.width = (pct * 100) + "%";
+    timeElapsed.textContent = formatTime(elapsed);
+    if (wasPlaying) startPlayback();
+  });
+
+  // ── Helpers ─────────────────────────────────────────────────
+  function setStatus(type, msg) {
+    statusDot.className = "status-dot" + (type ? " " + type : "");
+    statusText.textContent = msg;
+  }
+
+  function formatBytes(b) {
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+    return (b / 1024 / 1024).toFixed(1) + " MB";
+  }
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  // ── Init ─────────────────────────────────────────────────────
+  buildKeyboard();
+  drawIdleWave();
+
+  // Try backend health check
+  fetch(`${API_BASE}/`).then(() => {
+    setStatus("ready", "Backend connected — ready to analyze");
+  }).catch(() => {
+    setStatus("", "Backend offline — demo mode available");
+  });
+
   </script>
 </body>
 </html>

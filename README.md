@@ -83,9 +83,16 @@ cd tunemorph
 ```
 
 **2. Set up Python environment**
+
+> Run all commands from the **repo root** (`tunemorph/`), not from inside `backend/`.
+
 ```bash
+# Create and activate virtualenv
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+# Windows: .venv\Scripts\activate
+
+# Install dependencies (note: path is backend/requirements.txt from repo root)
 pip install -r backend/requirements.txt
 ```
 
@@ -104,6 +111,7 @@ sudo apt-get install ffmpeg
 
 **4. Start the backend**
 ```bash
+# Run from repo root — backend.app.main is the Python module path
 uvicorn backend.app.main:app --reload
 # → API running at http://localhost:8000
 # → Interactive docs at http://localhost:8000/docs
@@ -111,16 +119,21 @@ uvicorn backend.app.main:app --reload
 
 **5. Open the frontend**
 ```bash
-# Open frontend/index.html directly in your browser, or:
+# Option A: just double-click frontend/index.html in Finder / Explorer
+# Option B: serve it with Python
 python -m http.server 3000 --directory frontend
 # → http://localhost:3000
 ```
 
-Or use the Makefile shortcut:
+Or use the Makefile shortcut (from repo root):
 ```bash
-make install   # set up venv + deps
-make dev       # start both backend and frontend
+make install   # create venv + install deps
+make backend   # start backend (port 8000)
+make frontend  # serve frontend (port 3000)
 ```
+
+> **Common mistake:** if you `cd` into `backend/` first, the paths break.
+> Always run commands from the `tunemorph/` root.
 
 ---
 

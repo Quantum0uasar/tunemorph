@@ -1,1744 +1,1123 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>TuneMorph — Turn any sound into piano notes</title>
-  <meta name="description" content="Record or upload any audio and watch TuneMorph detect the notes and play them back on an interactive piano in real time." />
-  <meta property="og:title" content="TuneMorph" />
-  <meta property="og:description" content="Turn any sound into something you can play." />
-
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
   <style>
-    /* ─── Design Tokens ───────────────────────────────────── */
-    :root {
-      --font-body: 'Inter', system-ui, sans-serif;
-      --font-mono: 'Space Mono', 'Courier New', monospace;
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0a0a0f;
+      --surface:#111118;
+      --surface2:#18181f;
+      --surface3:#202028;
+      --border:#2a2a35;
+      --border2:#363640;
+      --text:#e8e8f2;
+      --muted:#7070a0;
+      --faint:#3a3a50;
+      --accent:#7c6fff;
+      --accent-h:#9d8fff;
+      --accent-glow:rgba(124,111,255,0.3);
+      --accent-dim:rgba(124,111,255,0.12);
+      --yellow:#f5c518;
+      --yellow-dim:rgba(245,197,24,0.15);
+      --yellow-glow:rgba(245,197,24,0.4);
+      --green:#3ecf8e;
+      --green-dim:rgba(62,207,142,0.15);
+      --red:#ff5555;
+      --red-dim:rgba(255,85,85,0.15);
+      --font:'Inter',sans-serif;
+      --mono:'Space Mono',monospace;
+    }
+    html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;-webkit-font-smoothing:antialiased;overflow:hidden}
 
-      --text-xs:   clamp(0.7rem,  0.65rem + 0.25vw, 0.8rem);
-      --text-sm:   clamp(0.8rem,  0.75rem + 0.25vw, 0.9rem);
-      --text-base: clamp(0.9rem,  0.85rem + 0.25vw, 1rem);
-      --text-lg:   clamp(1rem,    0.9rem  + 0.5vw,  1.25rem);
-      --text-xl:   clamp(1.25rem, 1rem    + 1vw,    1.75rem);
-      --text-2xl:  clamp(1.75rem, 1.2rem  + 2vw,    2.5rem);
+    /* ── layout ── */
+    .app{display:grid;grid-template-rows:56px 1fr;height:100vh}
 
-      --space-1: 0.25rem;
-      --space-2: 0.5rem;
-      --space-3: 0.75rem;
-      --space-4: 1rem;
-      --space-5: 1.25rem;
-      --space-6: 1.5rem;
-      --space-8: 2rem;
-      --space-10: 2.5rem;
-      --space-12: 3rem;
-      --space-16: 4rem;
+    /* ── header ── */
+    header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 24px;border-bottom:1px solid var(--border);
+      background:var(--surface);position:relative;z-index:10;
+    }
+    .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;letter-spacing:-.03em}
+    .logo svg{flex-shrink:0}
+    .logo span{color:var(--accent)}
+    .mode-pills{display:flex;gap:6px}
+    .pill{
+      padding:5px 14px;border-radius:99px;font-size:12px;font-weight:600;
+      border:1px solid var(--border2);color:var(--muted);cursor:pointer;
+      transition:all .15s ease;background:transparent;
+    }
+    .pill:hover{color:var(--text);border-color:var(--border2)}
+    .pill.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .header-right{display:flex;align-items:center;gap:8px}
+    .status-chip{
+      display:flex;align-items:center;gap:6px;
+      padding:4px 10px;border-radius:99px;font-size:11px;font-weight:600;
+      background:var(--surface2);border:1px solid var(--border);color:var(--muted);
+      font-family:var(--mono);
+    }
+    .status-dot{width:7px;height:7px;border-radius:50%;background:var(--faint);transition:all .3s}
+    .status-dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
+    .status-dot.busy{background:var(--yellow);animation:blink 1s infinite}
+    .status-dot.err{background:var(--red)}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 
-      --radius-sm: 0.375rem;
-      --radius-md: 0.5rem;
-      --radius-lg: 0.875rem;
-      --radius-xl: 1.25rem;
+    /* ── body split ── */
+    .body{display:grid;grid-template-columns:300px 1fr;overflow:hidden}
 
-      --transition: 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    /* ── sidebar ── */
+    .sidebar{
+      background:var(--surface);border-right:1px solid var(--border);
+      display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;
     }
+    .sidebar::-webkit-scrollbar{width:4px}
+    .sidebar::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
 
-    /* Dark mode (default) */
-    [data-theme="dark"] {
-      --bg:           #0d0d0f;
-      --surface:      #141416;
-      --surface-2:    #1a1a1e;
-      --surface-3:    #222228;
-      --border:       #2a2a32;
-      --border-2:     #35353f;
-      --text:         #e8e8f0;
-      --text-muted:   #888898;
-      --text-faint:   #444450;
-      --accent:       #7c6fff;
-      --accent-hover: #9487ff;
-      --accent-glow:  rgba(124, 111, 255, 0.25);
-      --accent-dim:   rgba(124, 111, 255, 0.12);
-      --green:        #3ecf8e;
-      --green-dim:    rgba(62, 207, 142, 0.15);
-      --red:          #ff6b6b;
-      --red-dim:      rgba(255, 107, 107, 0.15);
-      --amber:        #fbbf24;
-      --shadow-sm:    0 1px 3px rgba(0,0,0,0.4);
-      --shadow-md:    0 4px 16px rgba(0,0,0,0.5);
-      --shadow-lg:    0 12px 40px rgba(0,0,0,0.6);
-    }
+    .panel{padding:16px;border-bottom:1px solid var(--border)}
+    .panel-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:12px}
 
-    /* Light mode */
-    [data-theme="light"] {
-      --bg:           #f5f5f8;
-      --surface:      #ffffff;
-      --surface-2:    #f8f8fb;
-      --surface-3:    #f0f0f5;
-      --border:       #e0e0ea;
-      --border-2:     #d0d0de;
-      --text:         #1a1a2e;
-      --text-muted:   #5a5a72;
-      --text-faint:   #aaaabc;
-      --accent:       #6055e8;
-      --accent-hover: #7c6fff;
-      --accent-glow:  rgba(96, 85, 232, 0.2);
-      --accent-dim:   rgba(96, 85, 232, 0.08);
-      --green:        #059669;
-      --green-dim:    rgba(5, 150, 105, 0.12);
-      --red:          #dc2626;
-      --red-dim:      rgba(220, 38, 38, 0.12);
-      --amber:        #d97706;
-      --shadow-sm:    0 1px 3px rgba(0,0,0,0.08);
-      --shadow-md:    0 4px 16px rgba(0,0,0,0.10);
-      --shadow-lg:    0 12px 40px rgba(0,0,0,0.14);
+    /* record button */
+    .rec-center{display:flex;flex-direction:column;align-items:center;gap:10px;padding:8px 0}
+    .rec-btn{
+      width:68px;height:68px;border-radius:50%;border:2px solid var(--border2);
+      background:var(--surface2);display:flex;align-items:center;justify-content:center;
+      cursor:pointer;transition:all .15s ease;position:relative;
     }
+    .rec-btn:hover{border-color:var(--red);background:var(--red-dim)}
+    .rec-btn.active{border-color:var(--red);background:var(--red-dim);animation:pulse 1.5s infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--red-dim)}50%{box-shadow:0 0 0 10px transparent}}
+    .rec-dot{width:22px;height:22px;border-radius:50%;background:var(--red);transition:border-radius .15s}
+    .rec-btn.active .rec-dot{border-radius:4px;transform:scale(.85)}
+    .rec-time{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--text);display:none}
+    .rec-time.show{display:block}
+    .rec-hint{font-size:11px;color:var(--muted);text-align:center}
 
-    /* ─── Base Reset ───────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
-    body {
-      font-family: var(--font-body);
-      font-size: var(--text-base);
-      color: var(--text);
-      background: var(--bg);
-      min-height: 100dvh;
-      line-height: 1.6;
-      display: flex;
-      flex-direction: column;
-    }
-    button { cursor: pointer; background: none; border: none; font: inherit; color: inherit; }
-    img, svg { display: block; max-width: 100%; }
+    /* wave canvas */
+    #wave{width:100%;height:44px;display:block;border-radius:8px;background:var(--surface2);margin-top:8px}
 
-    /* ─── Layout ───────────────────────────────────────────── */
-    .app-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: var(--space-4) var(--space-6);
-      border-bottom: 1px solid var(--border);
-      background: var(--surface);
-      position: sticky;
-      top: 0;
-      z-index: 100;
+    /* upload zone */
+    .upload-zone{
+      border:2px dashed var(--border2);border-radius:10px;
+      padding:20px 12px;text-align:center;cursor:pointer;
+      transition:all .15s ease;display:flex;flex-direction:column;align-items:center;gap:6px;
     }
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
+    .upload-zone:hover,.upload-zone.over{border-color:var(--accent);background:var(--accent-dim)}
+    .upload-zone svg{color:var(--faint);transition:color .15s}
+    .upload-zone:hover svg,.upload-zone.over svg{color:var(--accent)}
+    .upload-zone p{font-size:12px;font-weight:500}
+    .upload-zone small{font-size:10px;color:var(--muted)}
+    #fileInput{display:none}
+    .file-row{
+      display:none;align-items:center;gap:8px;padding:8px 10px;
+      background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-top:8px;
     }
-    .logo-icon {
-      width: 36px; height: 36px;
-    }
-    .logo-text {
-      font-size: var(--text-lg);
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-    .logo-text span { color: var(--accent); }
-    .header-right { display: flex; align-items: center; gap: var(--space-3); }
-    .badge {
-      font-size: var(--text-xs);
-      font-family: var(--font-mono);
-      background: var(--accent-dim);
-      color: var(--accent);
-      border: 1px solid var(--accent-glow);
-      padding: 2px var(--space-2);
-      border-radius: var(--radius-sm);
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-    .theme-btn {
-      width: 36px; height: 36px;
-      display: flex; align-items: center; justify-content: center;
-      border-radius: var(--radius-md);
-      color: var(--text-muted);
-      transition: color var(--transition), background var(--transition);
-    }
-    .theme-btn:hover { color: var(--text); background: var(--surface-3); }
+    .file-row.show{display:flex}
+    .file-row span{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .file-row button{background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;display:flex}
+    .file-row button:hover{color:var(--red)}
 
-    main {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 340px 1fr;
-      gap: 0;
-      max-height: calc(100dvh - 65px);
-      overflow: hidden;
+    /* analyze btn */
+    .analyze-btn{
+      width:100%;padding:10px;border-radius:8px;border:none;cursor:pointer;
+      background:var(--accent);color:#fff;font-weight:700;font-size:13px;
+      display:flex;align-items:center;justify-content:center;gap:8px;
+      margin-top:12px;transition:all .15s ease;
     }
+    .analyze-btn:hover:not(:disabled){background:var(--accent-h);transform:translateY(-1px);box-shadow:0 4px 16px var(--accent-glow)}
+    .analyze-btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+    .analyze-btn .spin{display:none;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:rot .6s linear infinite}
+    .analyze-btn.loading .spin{display:block}
+    .analyze-btn.loading .btn-label{display:none}
+    @keyframes rot{to{transform:rotate(360deg)}}
 
-    /* ─── Sidebar ─────────────────────────────────────────── */
-    .sidebar {
-      border-right: 1px solid var(--border);
-      background: var(--surface);
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;
-      overflow-x: hidden;
+    /* settings */
+    .setting{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .setting:last-child{margin-bottom:0}
+    .setting label{font-size:12px;color:var(--muted)}
+    select{
+      background:var(--surface2);border:1px solid var(--border2);color:var(--text);
+      padding:4px 10px;border-radius:6px;font-size:12px;font-family:var(--font);
+      outline:none;cursor:pointer;
     }
-    .sidebar-section {
-      padding: var(--space-5) var(--space-6);
-      border-bottom: 1px solid var(--border);
+    select:focus{border-color:var(--accent)}
+
+    /* results */
+    .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+    .stat{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+    .stat-val{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent)}
+    .stat-key{font-size:10px;color:var(--muted);margin-top:2px}
+    .lesson-tip{font-size:12px;color:var(--muted);line-height:1.6;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)}
+
+    /* note chips */
+    .note-chips{
+      display:flex;flex-wrap:wrap;gap:4px;padding:10px;
+      background:var(--surface2);border-radius:8px;border:1px solid var(--border);
+      max-height:100px;overflow-y:auto;
     }
-    .sidebar-section:last-child { border-bottom: none; }
-    .section-label {
-      font-size: var(--text-xs);
-      font-weight: 600;
-      color: var(--text-faint);
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      margin-bottom: var(--space-4);
+    .note-chips::-webkit-scrollbar{width:3px}
+    .note-chips::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
+    .chip{
+      font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:99px;
+      background:var(--accent-dim);color:var(--accent);border:1px solid transparent;
+      transition:all .1s;
+    }
+    .chip.done{background:var(--surface3);color:var(--faint);border-color:var(--border)}
+    .chip.current{background:var(--accent);color:#fff;transform:scale(1.1)}
+    .chip.next-up{background:var(--yellow-dim);color:var(--yellow);border-color:var(--yellow);animation:chip-pulse .8s infinite}
+    @keyframes chip-pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+    /* ── main piano area ── */
+    .main{
+      display:flex;flex-direction:column;background:var(--bg);overflow:hidden;
     }
 
-    /* Audio input card */
-    .input-card {
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
+    /* mode banner */
+    .mode-banner{
+      padding:12px 24px;display:flex;align-items:center;justify-content:space-between;
+      border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;
     }
-    .input-tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border-bottom: 1px solid var(--border);
+    .mode-info{display:flex;align-items:center;gap:10px}
+    .mode-icon{
+      width:32px;height:32px;border-radius:8px;
+      display:flex;align-items:center;justify-content:center;
+      background:var(--accent-dim);color:var(--accent);flex-shrink:0;
     }
-    .input-tab {
-      padding: var(--space-3) var(--space-4);
-      font-size: var(--text-sm);
-      font-weight: 500;
-      text-align: center;
-      color: var(--text-muted);
-      transition: color var(--transition), background var(--transition);
-    }
-    .input-tab:hover { color: var(--text); }
-    .input-tab.active {
-      color: var(--accent);
-      background: var(--accent-dim);
-      border-bottom: 2px solid var(--accent);
-    }
-    .input-panel { padding: var(--space-4); display: none; }
-    .input-panel.active { display: block; }
+    .mode-title{font-weight:700;font-size:14px}
+    .mode-sub{font-size:11px;color:var(--muted)}
+    .progress-row{display:flex;align-items:center;gap:10px}
+    .progress-label{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+    .mini-progress{width:120px;height:4px;background:var(--border);border-radius:99px;overflow:hidden}
+    .mini-fill{height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width .2s}
 
-    /* Record panel */
-    .record-btn-wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-4) 0;
-    }
-    .record-btn {
-      width: 72px; height: 72px;
-      border-radius: 50%;
-      background: var(--surface-3);
-      border: 2px solid var(--border-2);
-      display: flex; align-items: center; justify-content: center;
-      transition: all var(--transition);
-      position: relative;
-    }
-    .record-btn:hover { border-color: var(--red); background: var(--red-dim); }
-    .record-btn.recording {
-      border-color: var(--red);
-      background: var(--red-dim);
-      animation: pulse-ring 1.5s ease infinite;
-    }
-    .record-dot {
-      width: 24px; height: 24px;
-      border-radius: 50%;
-      background: var(--red);
-      transition: border-radius var(--transition), transform var(--transition);
-    }
-    .record-btn.recording .record-dot {
-      border-radius: var(--radius-sm);
-      transform: scale(0.85);
-    }
-    @keyframes pulse-ring {
-      0%, 100% { box-shadow: 0 0 0 0 var(--red-dim); }
-      50% { box-shadow: 0 0 0 10px transparent; }
-    }
-    .record-label {
-      font-size: var(--text-sm);
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-    .record-timer {
-      font-family: var(--font-mono);
-      font-size: var(--text-xl);
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: 0.05em;
-      display: none;
-    }
-    .record-timer.visible { display: block; }
-
-    /* Waveform viz */
-    #waveformCanvas {
-      width: 100%;
-      height: 48px;
-      border-radius: var(--radius-md);
-      background: var(--surface-3);
-      display: block;
+    /* piano container */
+    .piano-container{
+      flex:1;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;padding:0 16px 16px;gap:16px;overflow:hidden;
     }
 
-    /* Upload panel */
-    .upload-zone {
-      border: 2px dashed var(--border-2);
-      border-radius: var(--radius-lg);
-      padding: var(--space-8) var(--space-4);
-      text-align: center;
-      cursor: pointer;
-      transition: all var(--transition);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-3);
+    /* tutorial next-note indicator */
+    .next-note-display{
+      display:flex;align-items:center;gap:12px;
+      padding:10px 20px;border-radius:12px;
+      background:var(--yellow-dim);border:1px solid var(--yellow);
+      opacity:0;transform:translateY(8px);
+      transition:all .25s ease;
     }
-    .upload-zone:hover, .upload-zone.drag-over {
-      border-color: var(--accent);
-      background: var(--accent-dim);
-    }
-    .upload-icon { color: var(--text-faint); margin-bottom: var(--space-1); }
-    .upload-zone:hover .upload-icon, .upload-zone.drag-over .upload-icon { color: var(--accent); }
-    .upload-text { font-size: var(--text-sm); font-weight: 500; }
-    .upload-subtext { font-size: var(--text-xs); color: var(--text-muted); }
-    #fileInput { display: none; }
+    .next-note-display.visible{opacity:1;transform:translateY(0)}
+    .next-note-display.correct{background:var(--green-dim);border-color:var(--green);animation:flash-green .4s ease}
+    @keyframes flash-green{0%,100%{background:var(--green-dim)}50%{background:rgba(62,207,142,.35)}}
+    .next-note-label{font-size:11px;font-weight:700;color:var(--yellow);letter-spacing:.08em;text-transform:uppercase}
+    .next-note-display.correct .next-note-label{color:var(--green)}
+    .next-note-name{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--yellow)}
+    .next-note-display.correct .next-note-name{color:var(--green)}
+    .next-note-sub{font-size:11px;color:var(--muted)}
 
-    /* Uploaded file display */
-    .file-info {
-      display: none;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-3);
-      background: var(--surface-3);
-      border-radius: var(--radius-md);
-      margin-top: var(--space-3);
-    }
-    .file-info.visible { display: flex; }
-    .file-name {
-      font-size: var(--text-sm);
-      font-weight: 500;
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .file-size { font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono); }
-    .file-remove { color: var(--text-faint); transition: color var(--transition); }
-    .file-remove:hover { color: var(--red); }
-
-    /* Analyze button */
-    .analyze-btn {
-      width: 100%;
-      padding: var(--space-3) var(--space-4);
-      background: var(--accent);
-      color: #fff;
-      border-radius: var(--radius-md);
-      font-weight: 600;
-      font-size: var(--text-sm);
-      margin-top: var(--space-4);
-      transition: all var(--transition);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-2);
-    }
-    .analyze-btn:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 16px var(--accent-glow); }
-    .analyze-btn:active { transform: translateY(0); }
-    .analyze-btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-      transform: none;
-      box-shadow: none;
-    }
-    .analyze-btn .spinner {
-      display: none;
-      width: 16px; height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-    .analyze-btn.loading .spinner { display: block; }
-    .analyze-btn.loading .btn-text { display: none; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Settings */
-    .setting-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: var(--space-3);
-    }
-    .setting-row:last-child { margin-bottom: 0; }
-    .setting-label { font-size: var(--text-sm); color: var(--text-muted); }
-    .select-input {
-      background: var(--surface-3);
-      border: 1px solid var(--border-2);
-      color: var(--text);
-      padding: var(--space-1) var(--space-3);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-sm);
-      font-family: var(--font-body);
-      outline: none;
-      cursor: pointer;
-      transition: border-color var(--transition);
-    }
-    .select-input:focus { border-color: var(--accent); }
-
-    /* Result info */
-    .result-stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: var(--space-3);
-    }
-    .stat-card {
-      background: var(--surface-3);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      padding: var(--space-3) var(--space-4);
-    }
-    .stat-value {
-      font-size: var(--text-lg);
-      font-weight: 700;
-      font-family: var(--font-mono);
-      color: var(--accent);
-    }
-    .stat-key { font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; }
-
-    /* Note sequence display */
-    .note-sequence {
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      color: var(--text-muted);
-      word-break: break-all;
-      line-height: 1.8;
-      min-height: 36px;
-      padding: var(--space-3);
-      background: var(--surface-3);
-      border-radius: var(--radius-md);
-      border: 1px solid var(--border);
-    }
-    .note-sequence .note-chip {
-      display: inline-block;
-      margin: 2px;
-      padding: 1px 6px;
-      border-radius: var(--radius-sm);
-      background: var(--accent-dim);
-      color: var(--accent);
-      border: 1px solid var(--accent-glow);
-    }
-    .note-sequence .note-chip.active-chip {
-      background: var(--accent);
-      color: #fff;
-    }
-
-    /* Status bar */
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-2) var(--space-3);
-      background: var(--surface-3);
-      border-radius: var(--radius-md);
-      margin-top: var(--space-3);
-    }
-    .status-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--text-faint);
-      flex-shrink: 0;
-      transition: background var(--transition);
-    }
-    .status-dot.ready { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .status-dot.processing { background: var(--amber); animation: blink 1s ease infinite; }
-    .status-dot.error { background: var(--red); }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-    .status-text { font-size: var(--text-xs); color: var(--text-muted); }
-
-    /* ─── Main Content Area ────────────────────────────────── */
-    .content {
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    /* Piano area */
-    .piano-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: var(--space-6) var(--space-8);
-      gap: var(--space-6);
-      overflow: hidden;
-    }
-
-    .piano-header {
-      text-align: center;
-    }
-    .piano-title {
-      font-size: var(--text-xl);
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-    .piano-subtitle {
-      font-size: var(--text-sm);
-      color: var(--text-muted);
-      margin-top: var(--space-1);
-    }
-
-    /* ─── Piano Keyboard ────────────────────────────────────── */
-    .piano-wrap {
-      position: relative;
-      width: 100%;
-      max-width: 900px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-4);
-    }
-
-    .keyboard {
-      position: relative;
-      display: flex;
-      background: #1a1018;
-      border-radius: var(--radius-lg);
-      padding: var(--space-3) var(--space-3) 0;
+    /* piano keyboard */
+    .keyboard-wrap{
+      position:relative;
+      background:#16101e;
+      border-radius:14px;
+      padding:12px 16px 0;
       box-shadow:
-        0 0 0 1px rgba(255,255,255,0.06),
-        0 20px 60px rgba(0,0,0,0.7),
-        0 4px 0 #0a0a0c,
-        inset 0 1px 0 rgba(255,255,255,0.04);
-      overflow: hidden;
+        0 0 0 1px rgba(255,255,255,.05),
+        0 24px 60px rgba(0,0,0,.8),
+        0 4px 0 #0a0710,
+        inset 0 1px 0 rgba(255,255,255,.04);
+      overflow-x:auto;
+      overflow-y:visible;
+      max-width:100%;
     }
-    [data-theme="light"] .keyboard {
-      background: #2d2235;
-      box-shadow:
-        0 0 0 1px rgba(0,0,0,0.12),
-        0 20px 60px rgba(0,0,0,0.25),
-        0 4px 0 #1a1422,
-        inset 0 1px 0 rgba(255,255,255,0.08);
+    .keyboard-wrap::-webkit-scrollbar{height:4px}
+    .keyboard-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
+
+    .keys{
+      display:flex;
+      position:relative;
+      gap:3px;
+      padding-bottom:14px;
+      /* width set by JS */
     }
 
-    .piano-keys {
-      display: flex;
-      position: relative;
-      gap: 3px;
-      padding-bottom: var(--space-3);
+    /* white keys */
+    .kw{
+      width:48px;height:152px;flex-shrink:0;
+      background:linear-gradient(180deg,#f0ede8 0%,#fff 25%,#f5f2ee 100%);
+      border-radius:0 0 8px 8px;
+      border:1px solid #bbb;border-top:none;
+      position:relative;cursor:pointer;
+      display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+      padding-bottom:8px;
+      transition:all 60ms ease;
+      user-select:none;
+      box-shadow:inset 0 -2px 4px rgba(0,0,0,.08),0 2px 6px rgba(0,0,0,.4);
+    }
+    .kw:hover{background:linear-gradient(180deg,#e8e4ff 0%,#f0eeff 25%,#e4e0f8 100%)}
+    .kw.pressed,.kw.playing{
+      background:linear-gradient(180deg,#c0b6ff 0%,#d4ccff 25%,#b8aef8 100%);
+      transform:translateY(3px);
+      box-shadow:inset 0 2px 8px rgba(124,111,255,.4),0 0 0 2px var(--accent);
+    }
+    /* yellow = next note to play in tutorial */
+    .kw.next{
+      background:linear-gradient(180deg,#f5d060 0%,#fde880 25%,#f0c840 100%);
+      box-shadow:0 0 20px var(--yellow-glow),0 0 0 2px var(--yellow),inset 0 2px 8px rgba(245,197,24,.3);
+      animation:key-pulse .7s ease-in-out infinite;
+    }
+    @keyframes key-pulse{0%,100%{transform:translateY(0)}50%{transform:translateY(2px)}}
+    .kw.correct{
+      background:linear-gradient(180deg,#60e8b0 0%,#80ffcc 25%,#40d898 100%);
+      box-shadow:0 0 20px rgba(62,207,142,.5),0 0 0 2px var(--green);
+      transform:translateY(3px);
     }
 
-    /* White keys */
-    .key-white {
-      width: 52px;
-      height: 160px;
-      background: linear-gradient(180deg, #f5f3f0 0%, #ffffff 30%, #f0ede8 100%);
-      border-radius: 0 0 var(--radius-md) var(--radius-md);
-      border: 1px solid #ccc;
-      border-top: none;
-      position: relative;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-end;
-      padding-bottom: var(--space-2);
-      transition: all 80ms ease;
-      user-select: none;
-      box-shadow:
-        inset 0 -2px 4px rgba(0,0,0,0.08),
-        0 2px 6px rgba(0,0,0,0.3);
+    /* black keys */
+    .kb{
+      width:30px;height:96px;flex-shrink:0;
+      background:linear-gradient(180deg,#1a1a1a 0%,#111 60%,#0a0a0a 100%);
+      border-radius:0 0 5px 5px;
+      border:1px solid #000;border-top:2px solid #2a2a2a;
+      position:absolute;
+      top:12px;cursor:pointer;
+      display:flex;align-items:flex-end;justify-content:center;
+      padding-bottom:6px;
+      transition:all 60ms ease;
+      user-select:none;z-index:2;
+      box-shadow:2px 4px 10px rgba(0,0,0,.8),inset 0 -1px 0 #2a2a2a;
     }
-    .key-white:active,
-    .key-white.pressed {
-      background: linear-gradient(180deg, #ddd8f0 0%, #e8e4ff 30%, #d8d4f0 100%);
-      transform: translateY(3px);
-      box-shadow: inset 0 2px 6px rgba(124,111,255,0.3), 0 0 0 2px var(--accent);
+    .kb:hover{background:linear-gradient(180deg,#2a2260 0%,#1e1848 60%,#141030 100%)}
+    .kb.pressed,.kb.playing{
+      background:linear-gradient(180deg,#5040c0 0%,#3a2ea0 60%,#2a2080 100%);
+      transform:translateY(3px);
+      box-shadow:0 0 14px var(--accent-glow),0 0 0 2px var(--accent);
     }
-    .key-white.highlight {
-      background: linear-gradient(180deg, #c8c0ff 0%, #d8d4ff 30%, #c0b8f0 100%);
-      box-shadow: 0 0 16px var(--accent-glow), 0 0 0 2px var(--accent), inset 0 2px 6px rgba(124,111,255,0.4);
-      transform: translateY(3px);
+    .kb.next{
+      background:linear-gradient(180deg,#c09000 0%,#a07800 60%,#805e00 100%);
+      box-shadow:0 0 16px var(--yellow-glow),0 0 0 2px var(--yellow);
+      animation:key-pulse .7s ease-in-out infinite;
     }
-    .key-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: #aaa;
-      font-family: var(--font-mono);
-      letter-spacing: 0.02em;
-    }
-    .key-white.highlight .key-label,
-    .key-white.pressed .key-label { color: var(--accent); }
-    .key-note-name {
-      font-size: 9px;
-      color: #bbb;
-      font-family: var(--font-mono);
-    }
-    .key-white.highlight .key-note-name,
-    .key-white.pressed .key-note-name { color: var(--accent); }
-
-    /* Black keys */
-    .key-black {
-      width: 34px;
-      height: 100px;
-      background: linear-gradient(180deg, #222 0%, #1a1a1a 60%, #111 100%);
-      border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-      border: 1px solid #000;
-      border-top: 2px solid #333;
-      position: absolute;
-      top: var(--space-3);
-      cursor: pointer;
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
-      padding-bottom: var(--space-2);
-      transition: all 80ms ease;
-      user-select: none;
-      z-index: 2;
-      box-shadow:
-        2px 4px 8px rgba(0,0,0,0.7),
-        inset 0 -1px 0 #333;
-    }
-    .key-black:active,
-    .key-black.pressed {
-      background: linear-gradient(180deg, #3a2f6f 0%, #2d2460 60%, #1e1840 100%);
-      transform: translateY(3px);
-      box-shadow: 0 0 12px var(--accent-glow), 0 0 0 2px var(--accent);
-    }
-    .key-black.highlight {
-      background: linear-gradient(180deg, #6060e0 0%, #5050c0 60%, #3a3a9a 100%);
-      box-shadow: 0 0 20px var(--accent-glow), 0 0 0 2px var(--accent);
-      transform: translateY(3px);
-    }
-    .key-black .key-label {
-      color: #666;
-      font-size: 9px;
-    }
-    .key-black.highlight .key-label,
-    .key-black.pressed .key-label { color: #ccc; }
-
-    /* Piano octave labels */
-    .octave-labels {
-      display: flex;
-      width: 100%;
-      max-width: 900px;
-      padding: 0 calc(var(--space-3) + 3px);
-      justify-content: space-around;
-    }
-    .octave-label {
-      font-size: var(--text-xs);
-      color: var(--text-faint);
-      font-family: var(--font-mono);
+    .kb.correct{
+      background:linear-gradient(180deg,#208050 0%,#186040 60%,#104030 100%);
+      box-shadow:0 0 14px rgba(62,207,142,.5),0 0 0 2px var(--green);
+      transform:translateY(3px);
     }
 
-    /* ─── Playback Bar ─────────────────────────────────────── */
-    .playback-bar {
-      border-top: 1px solid var(--border);
-      background: var(--surface);
-      padding: var(--space-4) var(--space-8);
-      display: flex;
-      align-items: center;
-      gap: var(--space-6);
-    }
-    .playback-controls {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-    .play-btn {
-      width: 44px; height: 44px;
-      border-radius: 50%;
-      background: var(--accent);
-      color: #fff;
-      display: flex; align-items: center; justify-content: center;
-      transition: all var(--transition);
-      flex-shrink: 0;
-    }
-    .play-btn:hover { background: var(--accent-hover); transform: scale(1.05); box-shadow: 0 4px 16px var(--accent-glow); }
-    .play-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
-    .control-btn {
-      width: 36px; height: 36px;
-      border-radius: var(--radius-md);
-      color: var(--text-muted);
-      display: flex; align-items: center; justify-content: center;
-      transition: all var(--transition);
-    }
-    .control-btn:hover { color: var(--text); background: var(--surface-3); }
-    .control-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .key-label{font-size:9px;font-weight:700;color:rgba(0,0,0,.25);font-family:var(--mono);letter-spacing:.02em}
+    .kb .key-label{color:rgba(255,255,255,.2)}
+    .kw.next .key-label{color:rgba(0,0,0,.5)}
+    .kw.playing .key-label,.kw.pressed .key-label{color:var(--accent)}
+    .kw.correct .key-label{color:var(--green)}
+    .octave-mark{font-size:8px;color:rgba(0,0,0,.2);position:absolute;bottom:18px;font-family:var(--mono)}
 
-    /* Progress */
-    .progress-wrap {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-1);
+    /* playback controls bar */
+    .controls-bar{
+      flex-shrink:0;border-top:1px solid var(--border);background:var(--surface);
+      padding:10px 24px;display:flex;align-items:center;gap:16px;
     }
-    .progress-track {
-      height: 4px;
-      background: var(--border);
-      border-radius: 99px;
-      cursor: pointer;
-      position: relative;
-      overflow: hidden;
+    .ctrl-btns{display:flex;align-items:center;gap:6px}
+    .cbtn{
+      width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      background:var(--surface2);color:var(--muted);transition:all .15s ease;
     }
-    .progress-fill {
-      height: 100%;
-      background: var(--accent);
-      border-radius: 99px;
-      width: 0%;
-      transition: width 100ms linear;
-      box-shadow: 0 0 8px var(--accent-glow);
+    .cbtn:hover{color:var(--text);background:var(--surface3)}
+    .cbtn:disabled{opacity:.3;cursor:not-allowed}
+    .cbtn.play-btn{background:var(--accent);color:#fff;width:44px;height:44px}
+    .cbtn.play-btn:hover{background:var(--accent-h);box-shadow:0 4px 16px var(--accent-glow)}
+    .cbtn.loop-on{color:var(--accent)}
+
+    .seek-wrap{flex:1;display:flex;flex-direction:column;gap:4px}
+    .seek-track{
+      height:4px;background:var(--border);border-radius:99px;cursor:pointer;position:relative;overflow:hidden;
     }
-    .progress-times {
-      display: flex;
-      justify-content: space-between;
-      font-size: var(--text-xs);
-      color: var(--text-faint);
-      font-family: var(--font-mono);
+    .seek-fill{height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width .1s linear;box-shadow:0 0 6px var(--accent-glow)}
+    .seek-times{display:flex;justify-content:space-between;font-size:10px;color:var(--faint);font-family:var(--mono)}
+
+    .speed-ctl{display:flex;align-items:center;gap:6px;white-space:nowrap}
+    .speed-ctl span{font-size:10px;color:var(--muted)}
+    .speed-val{font-size:11px;font-family:var(--mono);font-weight:700;color:var(--accent);min-width:2.5ch}
+    input[type=range]{
+      -webkit-appearance:none;appearance:none;width:72px;height:4px;
+      background:var(--border);border-radius:99px;outline:none;cursor:pointer;
+    }
+    input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+      background:var(--accent);cursor:pointer;box-shadow:0 0 4px var(--accent-glow);
     }
 
-    /* Speed control */
-    .speed-control {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      white-space: nowrap;
+    /* empty / welcome */
+    .welcome{
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:8px;color:var(--faint);text-align:center;flex:1;padding:24px;
     }
-    .speed-label { font-size: var(--text-xs); color: var(--text-muted); }
-    .speed-value {
-      font-size: var(--text-xs);
-      font-family: var(--font-mono);
-      font-weight: 700;
-      color: var(--accent);
-      min-width: 2.5ch;
-      text-align: right;
-    }
-    input[type="range"] {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 80px;
-      height: 4px;
-      border-radius: 99px;
-      background: var(--border);
-      outline: none;
-      cursor: pointer;
-    }
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      background: var(--accent);
-      cursor: pointer;
-      box-shadow: 0 0 6px var(--accent-glow);
-    }
+    .welcome svg{opacity:.25;margin-bottom:4px}
+    .welcome h2{font-size:16px;font-weight:700;color:var(--muted)}
+    .welcome p{font-size:12px;max-width:260px;line-height:1.6}
 
-    /* ─── Loading overlay ──────────────────────────────────── */
-    .loading-overlay {
-      position: absolute;
-      inset: 0;
-      background: rgba(13,13,15,0.85);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-4);
-      z-index: 50;
-      backdrop-filter: blur(4px);
-      display: none;
+    /* loading overlay */
+    .overlay{
+      position:absolute;inset:0;background:rgba(10,10,15,.88);
+      display:none;flex-direction:column;align-items:center;justify-content:center;
+      gap:14px;z-index:20;backdrop-filter:blur(6px);border-radius:14px;
     }
-    .loading-overlay.visible { display: flex; }
-    .loading-wave {
-      display: flex;
-      align-items: flex-end;
-      gap: 4px;
-      height: 40px;
-    }
-    .loading-bar {
-      width: 6px;
-      background: var(--accent);
-      border-radius: 99px;
-      animation: wave-bar 0.8s ease-in-out infinite;
-    }
-    .loading-bar:nth-child(1) { animation-delay: 0ms; }
-    .loading-bar:nth-child(2) { animation-delay: 100ms; }
-    .loading-bar:nth-child(3) { animation-delay: 200ms; }
-    .loading-bar:nth-child(4) { animation-delay: 300ms; }
-    .loading-bar:nth-child(5) { animation-delay: 200ms; }
-    .loading-bar:nth-child(6) { animation-delay: 100ms; }
-    @keyframes wave-bar {
-      0%, 100% { height: 8px; opacity: 0.4; }
-      50% { height: 36px; opacity: 1; }
-    }
-    .loading-text {
-      font-size: var(--text-sm);
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-
-    /* ─── Empty / welcome state ────────────────────────────── */
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-3);
-      color: var(--text-faint);
-      text-align: center;
-      padding: var(--space-8);
-      flex: 1;
-    }
-    .empty-state svg { opacity: 0.3; }
-    .empty-title { font-size: var(--text-lg); font-weight: 600; color: var(--text-muted); }
-    .empty-sub { font-size: var(--text-sm); max-width: 300px; line-height: 1.5; }
-
-    /* ─── Responsive ───────────────────────────────────────── */
-    @media (max-width: 900px) {
-      main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; max-height: none; overflow: auto; }
-      .sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 60vh; }
-      .content { min-height: 70vh; }
-      .keyboard { overflow-x: auto; }
-      .playback-bar { flex-wrap: wrap; }
-      .piano-area { padding: var(--space-4); }
-    }
-
-    /* ─── Keyboard shortcut hint ───────────────────────────── */
-    .key-hints {
-      display: flex;
-      gap: var(--space-2);
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    .hint-chip {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: var(--text-xs);
-      color: var(--text-faint);
-    }
-    .hint-key {
-      background: var(--surface-3);
-      border: 1px solid var(--border-2);
-      border-radius: 4px;
-      padding: 1px 6px;
-      font-family: var(--font-mono);
-      font-size: 10px;
-      color: var(--text-muted);
-    }
-
-    /* ─── Tooltip ─────────────────────────────────────────── */
-    [title] { cursor: help; }
+    .overlay.show{display:flex}
+    .wave-bars{display:flex;align-items:flex-end;gap:4px;height:36px}
+    .wb{width:5px;background:var(--accent);border-radius:99px;animation:wb .8s ease-in-out infinite}
+    .wb:nth-child(1){animation-delay:0ms}
+    .wb:nth-child(2){animation-delay:80ms}
+    .wb:nth-child(3){animation-delay:160ms}
+    .wb:nth-child(4){animation-delay:240ms}
+    .wb:nth-child(5){animation-delay:160ms}
+    .wb:nth-child(6){animation-delay:80ms}
+    @keyframes wb{0%,100%{height:6px;opacity:.4}50%{height:32px;opacity:1}}
+    .overlay p{font-size:13px;color:var(--muted);font-weight:500}
   </style>
 </head>
 <body>
+<div class="app">
 
-  <!-- Header -->
-  <header class="app-header">
+  <!-- HEADER -->
+  <header>
     <div class="logo">
-      <!-- SVG Logo -->
-      <svg class="logo-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="TuneMorph logo">
-        <rect width="36" height="36" rx="8" fill="#7c6fff" fill-opacity="0.15"/>
-        <!-- Sound wave left -->
-        <path d="M6 18 Q9 10 12 18 Q15 26 18 18" stroke="#7c6fff" stroke-width="2" stroke-linecap="round" fill="none"/>
-        <!-- Piano keys symbol -->
-        <rect x="19" y="12" width="4" height="14" rx="1" fill="#7c6fff" fill-opacity="0.8"/>
-        <rect x="24" y="12" width="4" height="14" rx="1" fill="#7c6fff" fill-opacity="0.5"/>
-        <rect x="29" y="12" width="4" height="14" rx="1" fill="#7c6fff" fill-opacity="0.3"/>
-        <!-- Black key -->
-        <rect x="21.5" y="12" width="2.5" height="8" rx="0.5" fill="#7c6fff"/>
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <rect width="28" height="28" rx="7" fill="#7c6fff" fill-opacity=".15"/>
+        <path d="M4 14 Q7 8 10 14 Q13 20 16 14" stroke="#7c6fff" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+        <rect x="17" y="8" width="3" height="12" rx=".8" fill="#7c6fff" fill-opacity=".9"/>
+        <rect x="21" y="8" width="3" height="12" rx=".8" fill="#7c6fff" fill-opacity=".55"/>
+        <rect x="25" y="8" width="2" height="12" rx=".8" fill="#7c6fff" fill-opacity=".3"/>
+        <rect x="19.5" y="8" width="2" height="7" rx=".4" fill="#7c6fff"/>
       </svg>
-      <span class="logo-text">Tune<span>Morph</span></span>
+      Tune<span>Morph</span>
     </div>
+
+    <div class="mode-pills">
+      <button class="pill active" data-mode="playback" onclick="setMode('playback')">▶ Auto Play</button>
+      <button class="pill" data-mode="tutorial" onclick="setMode('tutorial')">🎹 Tutorial</button>
+    </div>
+
     <div class="header-right">
-      <span class="badge">MVP</span>
-      <button class="theme-btn" data-theme-toggle aria-label="Toggle theme">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-        </svg>
-      </button>
+      <div class="status-chip">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Waiting…</span>
+      </div>
     </div>
   </header>
 
-  <main>
-    <!-- Sidebar -->
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- SIDEBAR -->
     <aside class="sidebar">
 
-      <!-- Audio Input -->
-      <div class="sidebar-section">
-        <div class="section-label">Audio Input</div>
-        <div class="input-card">
-          <div class="input-tabs">
-            <button class="input-tab active" data-tab="record" data-testid="tab-record">Record</button>
-            <button class="input-tab" data-tab="upload" data-testid="tab-upload">Upload</button>
-          </div>
-
-          <!-- Record panel -->
-          <div class="input-panel active" id="panel-record">
-            <div class="record-btn-wrap">
-              <button class="record-btn" id="recordBtn" data-testid="record-btn" aria-label="Start or stop recording">
-                <div class="record-dot"></div>
-              </button>
-              <div class="record-timer" id="recordTimer">0:00</div>
-              <span class="record-label" id="recordLabel">Click to record</span>
-            </div>
-            <canvas id="waveformCanvas" width="280" height="48" aria-hidden="true"></canvas>
-          </div>
-
-          <!-- Upload panel -->
-          <div class="input-panel" id="panel-upload">
-            <div class="upload-zone" id="uploadZone" data-testid="upload-zone" role="button" tabindex="0" aria-label="Upload audio file">
-              <svg class="upload-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-              <div class="upload-text">Drop audio file here</div>
-              <div class="upload-subtext">MP3, WAV, OGG, M4A, WEBM · max 20 MB</div>
-            </div>
-            <input type="file" id="fileInput" accept="audio/*" data-testid="file-input" />
-            <div class="file-info" id="fileInfo">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-              <span class="file-name" id="fileName">—</span>
-              <span class="file-size" id="fileSize">—</span>
-              <button class="file-remove" id="fileRemove" data-testid="file-remove" aria-label="Remove file">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          </div>
+      <!-- Input tabs -->
+      <div class="panel" style="padding-bottom:0">
+        <div class="panel-label">Audio Source</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);margin:0 -16px">
+          <button class="tab active" data-tab="record" onclick="switchTab('record')"
+            style="padding:8px;font-size:12px;font-weight:600;color:var(--accent);background:var(--accent-dim);border:none;cursor:pointer;border-bottom:2px solid var(--accent)">
+            Mic Record
+          </button>
+          <button class="tab" data-tab="upload" onclick="switchTab('upload')"
+            style="padding:8px;font-size:12px;font-weight:600;color:var(--muted);background:transparent;border:none;cursor:pointer;">
+            Upload File
+          </button>
         </div>
+      </div>
 
-        <!-- Analyze button -->
-        <button class="analyze-btn" id="analyzeBtn" data-testid="analyze-btn" disabled>
-          <div class="spinner"></div>
-          <span class="btn-text">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline;vertical-align:-2px;margin-right:6px">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            Detect Notes
-          </span>
-        </button>
+      <!-- Record panel -->
+      <div class="panel" id="panel-record">
+        <div class="rec-center">
+          <button class="rec-btn" id="recBtn" onclick="toggleRecord()">
+            <div class="rec-dot"></div>
+          </button>
+          <div class="rec-time" id="recTime">0:00</div>
+          <div class="rec-hint" id="recHint">Click to start recording</div>
+        </div>
+        <canvas id="wave" width="260" height="44"></canvas>
+      </div>
 
-        <!-- Status -->
-        <div class="status-bar" id="statusBar">
-          <div class="status-dot" id="statusDot"></div>
-          <span class="status-text" id="statusText">Waiting for audio input…</span>
+      <!-- Upload panel (hidden) -->
+      <div class="panel" id="panel-upload" style="display:none">
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
+          ondragover="event.preventDefault();this.classList.add('over')"
+          ondragleave="this.classList.remove('over')"
+          ondrop="handleDrop(event)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p>Drop audio or click to browse</p>
+          <small>MP3 · WAV · OGG · WEBM · M4A</small>
+        </div>
+        <input type="file" id="fileInput" accept="audio/*" onchange="handleFileInput(this)"/>
+        <div class="file-row" id="fileRow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          <span id="fileName">—</span>
+          <button onclick="clearFile()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
       </div>
 
       <!-- Settings -->
-      <div class="sidebar-section">
-        <div class="section-label">Settings</div>
-        <div class="setting-row">
-          <span class="setting-label">Instrument</span>
-          <select class="select-input" id="instrumentSelect" data-testid="instrument-select">
-            <option value="piano">Piano</option>
-            <option value="guitar">Guitar</option>
-            <option value="voice">Voice / Hum</option>
-            <option value="any">Any</option>
-          </select>
+      <div class="panel">
+        <div class="panel-label">Settings</div>
+        <div class="setting"><label>Instrument</label>
+          <select id="instrSel"><option value="any">Any</option><option value="piano">Piano</option><option value="voice">Voice/Hum</option><option value="guitar">Guitar</option></select>
         </div>
-        <div class="setting-row">
-          <span class="setting-label">Level</span>
-          <select class="select-input" id="levelSelect" data-testid="level-select">
-            <option value="beginner">Beginner</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Octave range</span>
-          <select class="select-input" id="octaveSelect" data-testid="octave-select">
-            <option value="3-5">C3–C5</option>
-            <option value="4-6">C4–C6</option>
-            <option value="2-5">C2–C5</option>
-          </select>
+        <div class="setting"><label>Level</label>
+          <select id="levelSel"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select>
         </div>
       </div>
 
-      <!-- Results -->
-      <div class="sidebar-section" id="resultsSection" style="display:none">
-        <div class="section-label">Analysis Results</div>
-        <div class="result-stats">
-          <div class="stat-card">
-            <div class="stat-value" id="statNotes">—</div>
-            <div class="stat-key">Notes detected</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="statTempo">—</div>
-            <div class="stat-key">Est. BPM</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="statKey">—</div>
-            <div class="stat-key">Key center</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="statDur">—</div>
-            <div class="stat-key">Duration</div>
-          </div>
+      <!-- Analyze -->
+      <div class="panel">
+        <button class="analyze-btn" id="analyzeBtn" disabled onclick="runAnalysis()">
+          <div class="spin"></div>
+          <span class="btn-label">🔍 Detect Notes</span>
+        </button>
+      </div>
+
+      <!-- Results (hidden until analysis) -->
+      <div class="panel" id="resultsPanel" style="display:none">
+        <div class="panel-label">Results</div>
+        <div class="stats-grid">
+          <div class="stat"><div class="stat-val" id="rNotes">—</div><div class="stat-key">Notes</div></div>
+          <div class="stat"><div class="stat-val" id="rBpm">—</div><div class="stat-key">BPM</div></div>
+          <div class="stat"><div class="stat-val" id="rKey">—</div><div class="stat-key">Key</div></div>
+          <div class="stat"><div class="stat-val" id="rDur">—</div><div class="stat-key">Duration</div></div>
         </div>
-        <div class="section-label" style="margin-top:var(--space-4)">Detected Sequence</div>
-        <div class="note-sequence" id="noteSequence" data-testid="note-sequence">—</div>
-        <div class="section-label" style="margin-top:var(--space-4)">Lesson Tip</div>
-        <p style="font-size:var(--text-sm);color:var(--text-muted);line-height:1.6" id="lessonTip">—</p>
+        <div class="panel-label" style="margin-top:10px">Sequence</div>
+        <div class="note-chips" id="noteChips"></div>
+        <div class="panel-label" style="margin-top:10px">Tip</div>
+        <div class="lesson-tip" id="lessonTip">—</div>
       </div>
 
     </aside>
 
-    <!-- Main content -->
-    <div class="content" style="position:relative">
+    <!-- MAIN PIANO AREA -->
+    <div class="main">
 
-      <!-- Loading overlay -->
-      <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-wave">
-          <div class="loading-bar"></div>
-          <div class="loading-bar"></div>
-          <div class="loading-bar"></div>
-          <div class="loading-bar"></div>
-          <div class="loading-bar"></div>
-          <div class="loading-bar"></div>
-        </div>
-        <div class="loading-text" id="loadingText">Analyzing audio…</div>
-      </div>
-
-      <!-- Piano area -->
-      <div class="piano-area">
-        <div class="piano-header">
-          <h1 class="piano-title">Interactive Piano</h1>
-          <p class="piano-subtitle">Detected notes will light up and play automatically</p>
-        </div>
-
-        <div class="piano-wrap">
-          <div class="keyboard" id="keyboard" aria-label="Piano keyboard" role="group">
-            <div class="piano-keys" id="pianoKeys"></div>
+      <!-- Mode banner -->
+      <div class="mode-banner" id="modeBanner">
+        <div class="mode-info">
+          <div class="mode-icon" id="modeIcon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </div>
-          <div class="key-hints" id="keyHints"></div>
+          <div>
+            <div class="mode-title" id="modeTitle">Auto Play</div>
+            <div class="mode-sub" id="modeSub">Detected notes will play automatically on the piano</div>
+          </div>
         </div>
-
-        <!-- Welcome / empty state -->
-        <div class="empty-state" id="emptyState">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-            <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-          </svg>
-          <div class="empty-title">Ready to listen</div>
-          <div class="empty-sub">Record or upload audio, then hit "Detect Notes" — the piano will play the detected tune</div>
+        <div class="progress-row">
+          <span class="progress-label" id="progressLabel">— / —</span>
+          <div class="mini-progress"><div class="mini-fill" id="miniFill"></div></div>
         </div>
       </div>
 
-      <!-- Playback bar -->
-      <div class="playback-bar">
-        <div class="playback-controls">
-          <button class="control-btn" id="rewindBtn" data-testid="rewind-btn" disabled title="Restart" aria-label="Restart">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+      <!-- Piano + next-note indicator -->
+      <div class="piano-container">
+
+        <!-- Tutorial next-note indicator -->
+        <div class="next-note-display" id="nextNoteDisplay">
+          <div>
+            <div class="next-note-label" id="nextNoteLabel">Play this note</div>
+            <div class="next-note-name" id="nextNoteName">—</div>
+          </div>
+          <div class="next-note-sub" id="nextNoteSub">Press the highlighted key</div>
+        </div>
+
+        <!-- Keyboard -->
+        <div class="keyboard-wrap" id="keyboardWrap" style="position:relative">
+          <div class="overlay" id="loadingOverlay">
+            <div class="wave-bars">
+              <div class="wb"></div><div class="wb"></div><div class="wb"></div>
+              <div class="wb"></div><div class="wb"></div><div class="wb"></div>
+            </div>
+            <p id="overlayText">Analyzing audio…</p>
+          </div>
+          <div class="keys" id="keys"></div>
+        </div>
+
+        <!-- Welcome state -->
+        <div class="welcome" id="welcome">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          <h2>Ready to listen</h2>
+          <p>Record or upload audio, hit Detect Notes — the piano will play what it hears</p>
+        </div>
+
+      </div>
+
+      <!-- Controls bar -->
+      <div class="controls-bar">
+        <div class="ctrl-btns">
+          <button class="cbtn" id="restartBtn" disabled onclick="restartPlayback()" title="Restart">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
           </button>
-          <button class="play-btn" id="playBtn" data-testid="play-btn" disabled title="Play / Pause" aria-label="Play or pause">
-            <svg id="playIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            <svg id="pauseIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none">
-              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-            </svg>
+          <button class="cbtn play-btn" id="playBtn" disabled onclick="togglePlay()" title="Play / Pause">
+            <svg id="iconPlay" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <svg id="iconPause" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
           </button>
-          <button class="control-btn" id="loopBtn" data-testid="loop-btn" disabled title="Loop" aria-label="Toggle loop">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          <button class="cbtn" id="loopBtn" disabled onclick="toggleLoop()" title="Loop">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
           </button>
         </div>
 
-        <div class="progress-wrap">
-          <div class="progress-track" id="progressTrack" role="slider" aria-label="Playback progress">
-            <div class="progress-fill" id="progressFill"></div>
+        <div class="seek-wrap">
+          <div class="seek-track" id="seekTrack" onclick="seek(event)">
+            <div class="seek-fill" id="seekFill"></div>
           </div>
-          <div class="progress-times">
-            <span id="timeElapsed">0:00</span>
-            <span id="timeDuration">0:00</span>
+          <div class="seek-times">
+            <span id="tElapsed">0:00</span>
+            <span id="tTotal">0:00</span>
           </div>
         </div>
 
-        <div class="speed-control">
-          <span class="speed-label">Speed</span>
-          <input type="range" id="speedSlider" data-testid="speed-slider" min="0.25" max="2" step="0.25" value="1" aria-label="Playback speed" />
-          <span class="speed-value" id="speedValue">1×</span>
+        <div class="speed-ctl">
+          <span>Speed</span>
+          <input type="range" id="speedRange" min=".25" max="2" step=".25" value="1" oninput="setSpeed(this.value)"/>
+          <span class="speed-val" id="speedVal">1×</span>
         </div>
       </div>
 
     </div>
-  </main>
+  </div>
+</div>
 
-  <script>
-  /* ═══════════════════════════════════════════════════════════
-     TuneMorph — Frontend Logic
-     ─ Piano rendering (C2–C6, 4 octaves)
-     ─ WebAudio for playback (sine + ADSR)
-     ─ MediaRecorder for mic capture
-     ─ Waveform visualiser
-     ─ Pitch-to-MIDI detection (via backend)
-     ─ Animated key playback
-  ═══════════════════════════════════════════════════════════ */
+<script>
+/* ═══════════════════════════════════════════════════
+   TuneMorph — complete rewrite
+   Modes:
+    - "playback" : notes play automatically, keys light purple
+    - "tutorial" : yellow key shows next note; waits for user to press it
+ ═══════════════════════════════════════════════════ */
 
-  // ── Config ─────────────────────────────────────────────────
-  const API_BASE = "http://localhost:8000";
+const API = "http://localhost:8000";
 
-  // Build 4 octaves (C2–B5) + C6
-  const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-  const KEY_MAP = { // keyboard shortcuts for one octave block (C4 centre)
-    "C4":"a","C#4":"w","D4":"s","D#4":"e","E4":"d","F4":"f",
-    "F#4":"t","G4":"g","G#4":"y","A4":"h","A#4":"u","B4":"j",
-    "C5":"k","C#5":"o","D5":"l","D#5":"p","E5":";","F5":"'",
-  };
+// ── note data ─────────────────────────────────────
+const NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const IS_BLACK = n => n.includes("#");
 
-  function noteFreq(note, octave) {
-    const semitone = NOTE_NAMES.indexOf(note);
-    // A4 = 440 Hz, midi = (octave+1)*12 + semitone
-    const midi = (octave + 1) * 12 + semitone;
-    return 440 * Math.pow(2, (midi - 69) / 12);
-  }
+function noteFreq(name, oct){
+  const midi = (oct+1)*12 + NAMES.indexOf(name);
+  return 440 * Math.pow(2,(midi-69)/12);
+}
 
-  // Generate all keys for octaves 2-5 + C6
-  const ALL_KEYS = [];
-  for (let oct = 2; oct <= 5; oct++) {
-    for (const n of NOTE_NAMES) {
-      ALL_KEYS.push({ note: `${n}${oct}`, name: n, octave: oct, isBlack: n.includes('#') });
+// Build C2–C6 (4 octaves + last C)
+const ALL_KEYS = [];
+for(let o=2;o<=5;o++) for(const n of NAMES) ALL_KEYS.push({note:`${n}${o}`,name:n,oct:o,black:IS_BLACK(n)});
+ALL_KEYS.push({note:"C6",name:"C",oct:6,black:false});
+
+// Keyboard shortcuts (one octave, C4 centre)
+const KB_MAP = {a:"C4",w:"C#4",s:"D4",e:"D#4",d:"E4",f:"F4",t:"F#4",g:"G4",y:"G#4",h:"A4",u:"A#4",j:"B4",k:"C5"};
+
+// ── audio context ─────────────────────────────────
+let actx = null, masterGain = null, analyser = null;
+function ensureAudio(){
+  if(actx) return;
+  actx = new (window.AudioContext||window.webkitAudioContext)();
+  masterGain = actx.createGain(); masterGain.gain.value = 0.55;
+  masterGain.connect(actx.destination);
+}
+function playTone(note, dur=0.5){
+  ensureAudio();
+  const k = ALL_KEYS.find(k=>k.note===note); if(!k) return;
+  const freq = noteFreq(k.name, k.oct);
+  const osc = actx.createOscillator();
+  const env = actx.createGain();
+  osc.type = "triangle"; osc.frequency.value = freq;
+  const t = actx.currentTime;
+  env.gain.setValueAtTime(0,t);
+  env.gain.linearRampToValueAtTime(1, t+0.005);
+  env.gain.linearRampToValueAtTime(0.6, t+0.05);
+  env.gain.setValueAtTime(0.6, t+dur-0.2);
+  env.gain.linearRampToValueAtTime(0, t+dur);
+  osc.connect(env).connect(masterGain);
+  osc.start(t); osc.stop(t+dur+0.05);
+}
+
+// ── state ─────────────────────────────────────────
+let currentMode = "playback"; // "playback" | "tutorial"
+let detectedNotes = [];       // [{note, duration}]
+let isPlaying = false;
+let isLooping = false;
+let playSpeed = 1;
+let playIdx = 0;
+let playTimer = null;
+let tutorialIdx = 0;          // which note user needs to press next
+let recordingBlob = null;
+let uploadedFile = null;
+let currentBlob = null;
+
+// recording
+let mediaRec = null, recChunks = [], recSecs = 0, recInterval = null;
+
+// ── DOM helpers ───────────────────────────────────
+const $=id=>document.getElementById(id);
+
+// ── Build keyboard ────────────────────────────────
+function buildKeys(){
+  const container = $("keys");
+  container.innerHTML = "";
+
+  const whites = ALL_KEYS.filter(k=>!k.black);
+  const W = 48+3; // key width + gap
+  container.style.width = (whites.length * W - 3) + "px";
+
+  let wi = 0; // white index tracker
+  const whiteMap = {}; // note → white index
+
+  // first pass: place white keys
+  ALL_KEYS.forEach(k=>{
+    if(k.black) return;
+    const el = document.createElement("div");
+    el.className="kw"; el.dataset.note=k.note;
+    // octave marker on C
+    if(k.name==="C"){
+      const m=document.createElement("div");
+      m.className="octave-mark"; m.textContent=k.oct;
+      el.appendChild(m);
     }
-  }
-  ALL_KEYS.push({ note: "C6", name: "C", octave: 6, isBlack: false });
+    const lbl=document.createElement("div");
+    lbl.className="key-label";
+    lbl.textContent=Object.entries(KB_MAP).find(([,v])=>v===k.note)?.[0]?.toUpperCase()||"";
+    el.appendChild(lbl);
 
-  // ── State ───────────────────────────────────────────────────
-  let audioCtx = null;
-  let masterGain = null;
-  const activeOscs = new Map(); // note → { osc, gain }
+    el.addEventListener("pointerdown",e=>{e.preventDefault();handleKeyPress(k.note);el.classList.add("pressed")});
+    el.addEventListener("pointerup",()=>el.classList.remove("pressed"));
+    el.addEventListener("pointerleave",()=>el.classList.remove("pressed"));
 
-  let mediaRecorder = null;
-  let recordingChunks = [];
-  let recordingBlob = null;
-  let uploadedFile = null;
-  let currentAudioBlob = null;
-
-  let detectedNotes = []; // array of { note, duration }
-  let playbackIndex = 0;
-  let playbackTimer = null;
-  let isPlaying = false;
-  let isLooping = false;
-  let playbackSpeed = 1;
-  let currentNoteIdx = 0;
-  let recordingSeconds = 0;
-  let recordTimer = null;
-
-  let analyserNode = null;
-  let waveAnimId = null;
-
-  // ── DOM refs ────────────────────────────────────────────────
-  const $ = id => document.getElementById(id);
-  const pianoKeys = $("pianoKeys");
-  const analyzeBtn = $("analyzeBtn");
-  const recordBtn = $("recordBtn");
-  const recordTimerEl = $("recordTimer");
-  const recordLabel = $("recordLabel");
-  const uploadZone = $("uploadZone");
-  const fileInput = $("fileInput");
-  const fileInfo = $("fileInfo");
-  const fileName = $("fileName");
-  const fileSize = $("fileSize");
-  const fileRemove = $("fileRemove");
-  const playBtn = $("playBtn");
-  const rewindBtn = $("rewindBtn");
-  const loopBtn = $("loopBtn");
-  const progressFill = $("progressFill");
-  const timeElapsed = $("timeElapsed");
-  const timeDuration = $("timeDuration");
-  const speedSlider = $("speedSlider");
-  const speedValue = $("speedValue");
-  const statusDot = $("statusDot");
-  const statusText = $("statusText");
-  const loadingOverlay = $("loadingOverlay");
-  const emptyState = $("emptyState");
-  const resultsSection = $("resultsSection");
-  const noteSequenceEl = $("noteSequence");
-  const waveCanvas = $("waveformCanvas");
-  const waveCtx = waveCanvas.getContext("2d");
-  const keyHints = $("keyHints");
-
-  // ── Theme toggle ────────────────────────────────────────────
-  (function() {
-    const root = document.documentElement;
-    const btn = document.querySelector("[data-theme-toggle]");
-    let current = root.getAttribute("data-theme") || "dark";
-    root.setAttribute("data-theme", current);
-    updateThemeIcon(btn, current);
-    btn.addEventListener("click", () => {
-      current = current === "dark" ? "light" : "dark";
-      root.setAttribute("data-theme", current);
-      updateThemeIcon(btn, current);
-    });
-    function updateThemeIcon(b, theme) {
-      b.innerHTML = theme === "dark"
-        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`
-        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
-    }
-  })();
-
-  // ── Tab switching ───────────────────────────────────────────
-  document.querySelectorAll(".input-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".input-tab").forEach(t => t.classList.remove("active"));
-      document.querySelectorAll(".input-panel").forEach(p => p.classList.remove("active"));
-      tab.classList.add("active");
-      $(`panel-${tab.dataset.tab}`).classList.add("active");
-    });
+    container.appendChild(el);
+    whiteMap[k.note]=wi;
+    wi++;
   });
 
-  // ── Audio context ───────────────────────────────────────────
-  function ensureAudio() {
-    if (audioCtx) return;
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.5;
-    masterGain.connect(audioCtx.destination);
-  }
+  // second pass: place black keys absolutely
+  ALL_KEYS.forEach(k=>{
+    if(!k.black) return;
+    // find white key index before this black key
+    let wCount=0;
+    for(const k2 of ALL_KEYS){
+      if(k2.note===k.note) break;
+      if(!k2.black) wCount++;
+    }
+    const el=document.createElement("div");
+    el.className="kb"; el.dataset.note=k.note;
+    const left = wCount*W - 15; // center between whites
+    el.style.left=left+"px";
 
-  function playNoteSound(note, duration = 0.5) {
+    const lbl=document.createElement("div");
+    lbl.className="key-label";
+    lbl.textContent=Object.entries(KB_MAP).find(([,v])=>v===k.note)?.[0]?.toUpperCase()||"";
+    el.appendChild(lbl);
+
+    el.addEventListener("pointerdown",e=>{e.preventDefault();handleKeyPress(k.note);el.classList.add("pressed")});
+    el.addEventListener("pointerup",()=>el.classList.remove("pressed"));
+    el.addEventListener("pointerleave",()=>el.classList.remove("pressed"));
+
+    container.appendChild(el);
+  });
+}
+
+function getKeyEl(note){ return $("keys").querySelector(`[data-note="${note}"]`); }
+
+function lightKey(note, cls){
+  const el = getKeyEl(note); if(!el) return;
+  el.classList.add(cls);
+}
+function clearKey(note, ...classes){
+  const el = getKeyEl(note); if(!el) return;
+  classes.forEach(c=>el.classList.remove(c));
+}
+function clearAllKeys(...classes){
+  classes.forEach(c=>document.querySelectorAll(".kw."+c+",.kb."+c).forEach(el=>el.classList.remove(c)));
+}
+
+// ── Key press handler ─────────────────────────────
+function handleKeyPress(note){
+  ensureAudio();
+  playTone(note, 0.7);
+
+  if(currentMode==="tutorial" && isPlaying && detectedNotes.length){
+    const expected = detectedNotes[tutorialIdx]?.note;
+    if(note === expected){
+      // Correct!
+      clearKey(note,"next");
+      lightKey(note,"correct");
+      showCorrect(note);
+      setTimeout(()=>clearKey(note,"correct"), 500);
+      advanceTutorial();
+    }
+    // wrong note — no penalty, just plays the sound
+  }
+}
+
+// ── Mode switching ────────────────────────────────
+function setMode(mode){
+  currentMode = mode;
+  document.querySelectorAll(".pill").forEach(p=>p.classList.toggle("active", p.dataset.mode===mode));
+  stopPlayback();
+
+  if(mode==="playback"){
+    $("modeIcon").innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+    $("modeTitle").textContent="Auto Play";
+    $("modeSub").textContent="Detected notes will play automatically on the piano";
+    $("nextNoteDisplay").classList.remove("visible");
+  } else {
+    $("modeIcon").innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+    $("modeTitle").textContent="Tutorial Mode";
+    $("modeSub").textContent="Yellow key = your next note. Press it to advance!";
+    if(detectedNotes.length) showTutorialPrompt();
+  }
+}
+
+// ── Tab switching ─────────────────────────────────
+function switchTab(tab){
+  document.querySelectorAll(".tab").forEach(t=>{
+    const isActive = t.dataset.tab===tab;
+    t.style.color = isActive ? "var(--accent)" : "var(--muted)";
+    t.style.background = isActive ? "var(--accent-dim)" : "transparent";
+    t.style.borderBottom = isActive ? "2px solid var(--accent)" : "2px solid transparent";
+  });
+  $("panel-record").style.display = tab==="record" ? "block" : "none";
+  $("panel-upload").style.display = tab==="upload" ? "block" : "none";
+}
+
+// ── Recording ─────────────────────────────────────
+async function toggleRecord(){
+  if(mediaRec && mediaRec.state==="recording"){ stopRecording(); return; }
+  try{
+    setStatus("busy","Requesting mic…");
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
     ensureAudio();
-    const { name, octave } = ALL_KEYS.find(k => k.note === note) || {};
-    if (!name) return;
-    const freq = noteFreq(name, octave);
+    const src = actx.createMediaStreamSource(stream);
+    analyser = actx.createAnalyser(); analyser.fftSize=512;
+    src.connect(analyser);
+    drawWave();
 
-    const osc = audioCtx.createOscillator();
-    const envGain = audioCtx.createGain();
-    osc.type = "triangle";
-    osc.frequency.value = freq;
+    mediaRec = new MediaRecorder(stream);
+    recChunks = [];
+    mediaRec.ondataavailable = e=>e.data.size&&recChunks.push(e.data);
+    mediaRec.onstop = ()=>{
+      recordingBlob = new Blob(recChunks,{type:"audio/webm"});
+      currentBlob = recordingBlob;
+      $("analyzeBtn").disabled=false;
+      setStatus("on",`Recorded ${fmtBytes(recordingBlob.size)}`);
+      analyser=null; cancelAnimationFrame(_waveRaf); drawIdleWave();
+    };
+    mediaRec.start();
+    $("recBtn").classList.add("active");
+    $("recHint").textContent="Recording… click to stop";
+    setStatus("busy","Recording…");
+    recSecs=0; $("recTime").textContent="0:00"; $("recTime").classList.add("show");
+    recInterval=setInterval(()=>{
+      recSecs++;
+      const m=Math.floor(recSecs/60), s=recSecs%60;
+      $("recTime").textContent=`${m}:${s.toString().padStart(2,"0")}`;
+    },1000);
+  } catch(e){ setStatus("err","Mic denied"); }
+}
+function stopRecording(){
+  if(!mediaRec) return;
+  mediaRec.stop(); mediaRec.stream.getTracks().forEach(t=>t.stop());
+  clearInterval(recInterval);
+  $("recBtn").classList.remove("active");
+  $("recHint").textContent="Click to record again";
+  $("recTime").classList.remove("show");
+}
 
-    // ADSR envelope
-    const t = audioCtx.currentTime;
-    const attack = 0.005;
-    const decay = 0.08;
-    const sustain = 0.6;
-    const release = 0.25;
-    envGain.gain.setValueAtTime(0, t);
-    envGain.gain.linearRampToValueAtTime(1, t + attack);
-    envGain.gain.linearRampToValueAtTime(sustain, t + attack + decay);
-    envGain.gain.setValueAtTime(sustain, t + duration - release);
-    envGain.gain.linearRampToValueAtTime(0, t + duration);
-
-    osc.connect(envGain).connect(masterGain);
-    osc.start(t);
-    osc.stop(t + duration + 0.05);
+// ── Waveform ──────────────────────────────────────
+let _waveRaf = null;
+const waveCtx = $("wave").getContext("2d");
+function drawIdleWave(){
+  waveCtx.clearRect(0,0,260,44);
+  waveCtx.strokeStyle="#2a2a35"; waveCtx.lineWidth=1.5;
+  waveCtx.beginPath(); waveCtx.moveTo(0,22); waveCtx.lineTo(260,22); waveCtx.stroke();
+}
+function drawWave(){
+  if(!analyser){ drawIdleWave(); return; }
+  const buf=new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+  waveCtx.clearRect(0,0,260,44);
+  waveCtx.lineWidth=2; waveCtx.strokeStyle="#7c6fff";
+  waveCtx.beginPath();
+  const sl=260/buf.length; let x=0;
+  for(let i=0;i<buf.length;i++){
+    const y=(buf[i]/128)*22;
+    i===0?waveCtx.moveTo(x,y):waveCtx.lineTo(x,y);
+    x+=sl;
   }
+  waveCtx.stroke();
+  _waveRaf=requestAnimationFrame(drawWave);
+}
 
-  function pressKey(note) {
-    const el = pianoKeys.querySelector(`[data-note="${note}"]`);
-    if (el) el.classList.add("highlight");
+// ── Upload ────────────────────────────────────────
+function handleDrop(e){
+  e.preventDefault(); $("dropZone").classList.remove("over");
+  const f=e.dataTransfer.files[0]; if(f) setFile(f);
+}
+function handleFileInput(input){ if(input.files[0]) setFile(input.files[0]); }
+function setFile(f){
+  if(!f.type.startsWith("audio/")){ setStatus("err","Not an audio file"); return; }
+  uploadedFile=f; currentBlob=f;
+  $("fileName").textContent=f.name; $("fileRow").classList.add("show");
+  $("analyzeBtn").disabled=false;
+  setStatus("on",`${fmtBytes(f.size)} ready`);
+}
+function clearFile(){
+  uploadedFile=null; currentBlob=null;
+  $("fileRow").classList.remove("show"); $("analyzeBtn").disabled=true;
+  setStatus("","Waiting…");
+}
+
+// ── Analysis ──────────────────────────────────────
+async function runAnalysis(){
+  if(!currentBlob) return;
+  $("analyzeBtn").disabled=true; $("analyzeBtn").classList.add("loading");
+  $("loadingOverlay").classList.add("show"); $("overlayText").textContent="Uploading audio…";
+  setStatus("busy","Analyzing…");
+  stopPlayback(); clearAllKeys("next","playing","correct","done");
+
+  try{
+    const fd=new FormData();
+    fd.append("file", currentBlob, currentBlob.name||`rec_${Date.now()}.webm`);
+    fd.append("instrument", $("instrSel").value);
+    fd.append("level", $("levelSel").value);
+    $("overlayText").textContent="Detecting pitch…";
+    const res = await fetch(`${API}/analyze`,{method:"POST",body:fd});
+    if(!res.ok){ const e=await res.json().catch(()=>({detail:"Server error"})); throw new Error(e.detail||"Failed"); }
+    const data = await res.json();
+    $("overlayText").textContent="Building sequence…";
+    await new Promise(r=>setTimeout(r,300));
+    loadResult(data);
+    setStatus("on",`${data.analysis.detected_notes.length} notes detected`);
+  } catch(e){
+    setStatus("err", e.message.includes("fetch") ? "Backend offline — demo loaded" : e.message);
+    loadDemo();
+  } finally{
+    $("analyzeBtn").classList.remove("loading");
+    $("analyzeBtn").disabled=false;
+    $("loadingOverlay").classList.remove("show");
   }
+}
 
-  function releaseKey(note) {
-    const el = pianoKeys.querySelector(`[data-note="${note}"]`);
-    if (el) el.classList.remove("highlight");
-  }
+function loadResult(data){
+  const {detected_notes,tempo,key_center,duration,lesson} = data.analysis;
+  detectedNotes = detected_notes.map(n=>({note:typeof n==="string"?n:n.note, duration:n.duration||0.45}));
+  renderResults(detected_notes.length, tempo, key_center, duration, lesson);
+  afterLoad();
+}
 
-  // ── Keyboard construction ───────────────────────────────────
-  function buildKeyboard() {
-    pianoKeys.innerHTML = "";
-    keyHints.innerHTML = "";
+function loadDemo(){
+  const scale=["C4","E4","G4","C5","B4","A4","G4","E4","D4","F4","A4","C5","B4","G4","E4","C4"];
+  detectedNotes = scale.map(n=>({note:n,duration:0.45}));
+  renderResults(scale.length,120,"C",scale.length*0.45,"Demo mode — backend offline. This is a C major melody.");
+  afterLoad();
+}
 
-    // We lay out white keys inline, black keys absolutely offset
-    const whites = ALL_KEYS.filter(k => !k.isBlack);
-    const whiteWidth = 52 + 3; // key width + gap
+function renderResults(count,tempo,key,dur,lesson){
+  $("rNotes").textContent=count;
+  $("rBpm").textContent=tempo?Math.round(tempo):"—";
+  $("rKey").textContent=key||"—";
+  $("rDur").textContent=dur?`${dur.toFixed(1)}s`:"—";
+  $("lessonTip").textContent=lesson||"—";
+  renderChips();
+  $("resultsPanel").style.display="block";
+}
 
-    // Container needs explicit width for black key positioning
-    const totalWhites = whites.length;
-    pianoKeys.style.width = (totalWhites * whiteWidth - 3) + "px";
-
-    // Track cumulative white index
-    let whiteIdx = 0;
-
-    // Black key offsets within an octave (relative to C)
-    // Positions: C#=1, D#=2, F#=4, G#=5, A#=6 (0-indexed half positions)
-    const blackOffsets = { "C#": 1, "D#": 2, "F#": 4, "G#": 5, "A#": 6 };
-
-    ALL_KEYS.forEach((key) => {
-      const el = document.createElement("div");
-      el.dataset.note = key.note;
-      el.setAttribute("role", "button");
-      el.setAttribute("aria-label", `${key.note} piano key`);
-      el.setAttribute("tabindex", "0");
-
-      if (key.isBlack) {
-        el.className = "key-black";
-        // Find position based on preceding white key index
-        const octaveStart = whites.findIndex(w => w.octave === key.octave && w.name === "C");
-        const noteInOctave = NOTE_NAMES.indexOf(key.name);
-        // Count whites before this black key in the octave
-        const whitesBefore = NOTE_NAMES.slice(0, noteInOctave).filter(n => !n.includes("#")).length;
-        const absWhiteIdx = whites.findIndex(w => w.octave === key.octave && !w.isBlack &&
-          NOTE_NAMES.indexOf(w.name) > noteInOctave) - 1;
-
-        // Calculate actual white index by iterating
-        let wCount = 0;
-        for (const k2 of ALL_KEYS) {
-          if (k2.note === key.note) break;
-          if (!k2.isBlack) wCount++;
-        }
-        // Position black key between the surrounding whites
-        const leftOffset = wCount * whiteWidth - 17; // center over gap
-        el.style.left = leftOffset + "px";
-
-        const labelEl = document.createElement("div");
-        labelEl.className = "key-label";
-        labelEl.textContent = KEY_MAP[key.note] ? KEY_MAP[key.note].toUpperCase() : "";
-        el.appendChild(labelEl);
-
-        pianoKeys.appendChild(el);
-      } else {
-        el.className = "key-white";
-        const labelEl = document.createElement("div");
-        labelEl.className = "key-label";
-        labelEl.textContent = KEY_MAP[key.note] ? KEY_MAP[key.note].toUpperCase() : "";
-        const noteEl = document.createElement("div");
-        noteEl.className = "key-note-name";
-        // Show note name on C keys as octave marker
-        noteEl.textContent = key.name === "C" ? key.note : "";
-        el.appendChild(noteEl);
-        el.appendChild(labelEl);
-
-        pianoKeys.appendChild(el);
-        whiteIdx++;
-      }
-
-      // Pointer events
-      el.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        ensureAudio();
-        playNoteSound(key.note, 0.8);
-        el.classList.add("pressed");
-      });
-      el.addEventListener("pointerup", () => el.classList.remove("pressed"));
-      el.addEventListener("pointerleave", () => el.classList.remove("pressed"));
-    });
-  }
-
-  // ── Keyboard shortcuts ──────────────────────────────────────
-  document.addEventListener("keydown", (e) => {
-    if (e.repeat || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
-    const note = Object.entries(KEY_MAP).find(([n, k]) => k === e.key.toLowerCase())?.[0];
-    if (!note) return;
-    ensureAudio();
-    playNoteSound(note, 0.6);
-    const el = pianoKeys.querySelector(`[data-note="${note}"]`);
-    if (el) el.classList.add("pressed");
+function renderChips(){
+  const el=$("noteChips"); el.innerHTML="";
+  detectedNotes.forEach(({note},i)=>{
+    const c=document.createElement("span");
+    c.className="chip"; c.textContent=note; c.dataset.idx=i;
+    el.appendChild(c);
   });
-  document.addEventListener("keyup", (e) => {
-    const note = Object.entries(KEY_MAP).find(([n, k]) => k === e.key.toLowerCase())?.[0];
-    if (!note) return;
-    const el = pianoKeys.querySelector(`[data-note="${note}"]`);
-    if (el) el.classList.remove("pressed");
-  });
+}
 
-  // ── Waveform visualiser ─────────────────────────────────────
-  function drawIdleWave() {
-    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
-    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-    waveCtx.strokeStyle = isDark ? "#333340" : "#dddde8";
-    waveCtx.lineWidth = 1.5;
-    waveCtx.beginPath();
-    const mid = waveCanvas.height / 2;
-    waveCtx.moveTo(0, mid);
-    waveCtx.lineTo(waveCanvas.width, mid);
-    waveCtx.stroke();
+function afterLoad(){
+  $("welcome").style.display="none";
+  playIdx=0; tutorialIdx=0;
+  $("playBtn").disabled=false;
+  $("restartBtn").disabled=false;
+  $("loopBtn").disabled=false;
+  updateSeek();
+  if(currentMode==="tutorial") showTutorialPrompt();
+}
+
+// ── Playback ──────────────────────────────────────
+function togglePlay(){
+  if(isPlaying) pausePlayback(); else startPlayback();
+}
+function startPlayback(){
+  if(!detectedNotes.length) return;
+  ensureAudio(); isPlaying=true;
+  $("iconPlay").style.display="none"; $("iconPause").style.display="block";
+  if(currentMode==="tutorial") runTutorial(); else runAutoPlay();
+}
+function pausePlayback(){
+  isPlaying=false;
+  $("iconPlay").style.display="block"; $("iconPause").style.display="none";
+  clearTimeout(playTimer); clearAllKeys("playing","next");
+}
+function stopPlayback(){
+  pausePlayback(); playIdx=0; tutorialIdx=0; updateSeek();
+}
+function restartPlayback(){
+  stopPlayback();
+  clearAllKeys("next","playing","correct","done");
+  renderChips();
+  if(currentMode==="tutorial"){ showTutorialPrompt(); } else { $("nextNoteDisplay").classList.remove("visible"); }
+}
+function toggleLoop(){
+  isLooping=!isLooping;
+  $("loopBtn").classList.toggle("loop-on",isLooping);
+}
+function setSpeed(v){
+  playSpeed=parseFloat(v); $("speedVal").textContent=v+"×";
+}
+function seek(e){
+  if(!detectedNotes.length) return;
+  const rect=e.currentTarget.getBoundingClientRect();
+  const pct=(e.clientX-rect.left)/rect.width;
+  const total=detectedNotes.reduce((s,n)=>s+n.duration,0);
+  let elapsed=0,idx=0;
+  for(let i=0;i<detectedNotes.length;i++){
+    if((elapsed+detectedNotes[i].duration)/total>=pct){idx=i;break;}
+    elapsed+=detectedNotes[i].duration; idx=i+1;
   }
+  const wasPlaying=isPlaying; pausePlayback();
+  playIdx=idx; tutorialIdx=idx; updateSeek();
+  if(wasPlaying) startPlayback();
+}
 
-  function drawLiveWave() {
-    if (!analyserNode) { drawIdleWave(); return; }
-    const buf = new Uint8Array(analyserNode.fftSize);
-    analyserNode.getByteTimeDomainData(buf);
-    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
-    waveCtx.lineWidth = 2;
-    waveCtx.strokeStyle = "#7c6fff";
-    waveCtx.beginPath();
-    const sliceW = waveCanvas.width / buf.length;
-    let x = 0;
-    for (let i = 0; i < buf.length; i++) {
-      const v = buf[i] / 128.0;
-      const y = (v * waveCanvas.height) / 2;
-      i === 0 ? waveCtx.moveTo(x, y) : waveCtx.lineTo(x, y);
-      x += sliceW;
-    }
-    waveCtx.lineTo(waveCanvas.width, waveCanvas.height / 2);
-    waveCtx.stroke();
-    waveAnimId = requestAnimationFrame(drawLiveWave);
+// Auto-play mode: schedule each note
+function runAutoPlay(){
+  if(!isPlaying) return;
+  if(playIdx>=detectedNotes.length){
+    if(isLooping){playIdx=0;renderChips();runAutoPlay();} else {pausePlayback();return;}
   }
+  const {note,duration} = detectedNotes[playIdx];
+  const dur = duration/playSpeed;
 
-  // ── Recording ───────────────────────────────────────────────
-  recordBtn.addEventListener("click", async () => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      stopRecording();
-    } else {
-      await startRecording();
-    }
-  });
-
-  async function startRecording() {
-    try {
-      setStatus("processing", "Requesting microphone access…");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // Set up analyser for waveform
-      ensureAudio();
-      const source = audioCtx.createMediaStreamSource(stream);
-      analyserNode = audioCtx.createAnalyser();
-      analyserNode.fftSize = 512;
-      source.connect(analyserNode);
-      drawLiveWave();
-
-      mediaRecorder = new MediaRecorder(stream);
-      recordingChunks = [];
-      mediaRecorder.ondataavailable = (e) => e.data.size && recordingChunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordingChunks, { type: "audio/webm" });
-        recordingBlob = blob;
-        currentAudioBlob = blob;
-        analyzeBtn.disabled = false;
-        setStatus("ready", `Recording saved — ${formatBytes(blob.size)}`);
-        cancelAnimationFrame(waveAnimId);
-        drawIdleWave();
-        analyserNode = null;
-      };
-      mediaRecorder.start();
-
-      recordBtn.classList.add("recording");
-      recordLabel.textContent = "Recording… (click to stop)";
-      setStatus("processing", "Recording in progress…");
-
-      // Timer
-      recordingSeconds = 0;
-      recordTimerEl.textContent = "0:00";
-      recordTimerEl.classList.add("visible");
-      recordTimer = setInterval(() => {
-        recordingSeconds++;
-        const m = Math.floor(recordingSeconds / 60);
-        const s = recordingSeconds % 60;
-        recordTimerEl.textContent = `${m}:${s.toString().padStart(2,"0")}`;
-      }, 1000);
-
-    } catch (err) {
-      setStatus("error", "Microphone permission denied");
-    }
-  }
-
-  function stopRecording() {
-    if (!mediaRecorder) return;
-    mediaRecorder.stop();
-    mediaRecorder.stream.getTracks().forEach(t => t.stop());
-    clearInterval(recordTimer);
-    recordBtn.classList.remove("recording");
-    recordLabel.textContent = "Click to record";
-    recordTimerEl.classList.remove("visible");
-  }
-
-  // ── Upload ──────────────────────────────────────────────────
-  uploadZone.addEventListener("click", () => fileInput.click());
-  uploadZone.addEventListener("keydown", (e) => e.key === "Enter" && fileInput.click());
-
-  uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("drag-over"); });
-  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("drag-over"));
-  uploadZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    uploadZone.classList.remove("drag-over");
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+  // update chip
+  document.querySelectorAll(".chip").forEach((c,i)=>{
+    c.classList.remove("current","next-up","done");
+    if(i<playIdx) c.classList.add("done");
+    else if(i===playIdx) c.classList.add("current");
+    else if(i===playIdx+1) c.classList.add("next-up");
   });
 
-  fileInput.addEventListener("change", () => {
-    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  clearAllKeys("playing");
+  lightKey(note,"playing");
+  playTone(note, dur*0.88);
+  setTimeout(()=>clearKey(note,"playing"), dur*900);
+
+  updateSeek(playIdx);
+  playIdx++;
+  playTimer = setTimeout(runAutoPlay, dur*1000);
+}
+
+// Tutorial mode: highlight next key, wait for user to press it
+function runTutorial(){
+  if(!isPlaying || !detectedNotes.length) return;
+  showTutorialPrompt();
+}
+
+function showTutorialPrompt(){
+  if(tutorialIdx>=detectedNotes.length){
+    if(isLooping){ tutorialIdx=0; clearAllKeys("done","next"); renderChips(); }
+    else{ pausePlayback(); $("nextNoteDisplay").classList.remove("visible"); return; }
+  }
+  const {note} = detectedNotes[tutorialIdx];
+  clearAllKeys("next","playing","correct");
+  lightKey(note,"next");
+
+  $("nextNoteName").textContent=note;
+  $("nextNoteLabel").textContent=`Note ${tutorialIdx+1} of ${detectedNotes.length}`;
+  $("nextNoteSub").textContent="Press the highlighted key ↑";
+  $("nextNoteDisplay").classList.remove("correct");
+  $("nextNoteDisplay").classList.add("visible");
+
+  // chip highlight
+  document.querySelectorAll(".chip").forEach((c,i)=>{
+    c.classList.remove("current","next-up","done");
+    if(i<tutorialIdx) c.classList.add("done");
+    else if(i===tutorialIdx) c.classList.add("current");
+    else if(i===tutorialIdx+1) c.classList.add("next-up");
   });
 
-  fileRemove.addEventListener("click", () => {
-    uploadedFile = null;
-    currentAudioBlob = null;
-    fileInfo.classList.remove("visible");
-    analyzeBtn.disabled = true;
-    setStatus("", "Waiting for audio input…");
-    fileInput.value = "";
-  });
+  updateSeek(tutorialIdx);
+  // Scroll keyboard to bring note into view
+  scrollToKey(note);
+}
 
-  function handleFile(file) {
-    if (!file.type.startsWith("audio/")) {
-      setStatus("error", "Please upload an audio file");
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      setStatus("error", "File too large — max 20 MB");
-      return;
-    }
-    uploadedFile = file;
-    currentAudioBlob = file;
-    fileName.textContent = file.name;
-    fileSize.textContent = formatBytes(file.size);
-    fileInfo.classList.add("visible");
-    analyzeBtn.disabled = false;
-    setStatus("ready", `File ready — ${formatBytes(file.size)}`);
+function showCorrect(note){
+  $("nextNoteDisplay").classList.add("correct");
+  $("nextNoteLabel").textContent="✓ Correct!";
+  $("nextNoteSub").textContent="";
+}
+
+function advanceTutorial(){
+  tutorialIdx++;
+  setTimeout(()=>{
+    if(isPlaying) showTutorialPrompt();
+  }, 400);
+}
+
+function scrollToKey(note){
+  const el=getKeyEl(note); if(!el) return;
+  const wrap=$("keyboardWrap");
+  const r=el.getBoundingClientRect();
+  const wr=wrap.getBoundingClientRect();
+  if(r.left<wr.left||r.right>wr.right){
+    el.scrollIntoView({inline:"center",behavior:"smooth"});
   }
+}
 
-  // ── Analysis ────────────────────────────────────────────────
-  analyzeBtn.addEventListener("click", async () => {
-    if (!currentAudioBlob) return;
-    await analyzeAudio(currentAudioBlob);
-  });
+function updateSeek(idx){
+  if(!detectedNotes.length) return;
+  const i = idx??playIdx;
+  const total=detectedNotes.reduce((s,n)=>s+n.duration,0);
+  const elapsed=detectedNotes.slice(0,i).reduce((s,n)=>s+n.duration,0);
+  const pct=total>0?(elapsed/total)*100:0;
+  $("seekFill").style.width=pct+"%";
+  $("tElapsed").textContent=fmtTime(elapsed/playSpeed);
+  $("tTotal").textContent=fmtTime(total/playSpeed);
+  $("progressLabel").textContent=`${i} / ${detectedNotes.length}`;
+  $("miniFill").style.width=pct+"%";
+}
 
-  async function analyzeAudio(blob) {
-    analyzeBtn.disabled = true;
-    analyzeBtn.classList.add("loading");
-    loadingOverlay.classList.add("visible");
-    $("loadingText").textContent = "Uploading audio…";
-    setStatus("processing", "Sending audio to backend…");
+// ── Keyboard shortcuts ────────────────────────────
+document.addEventListener("keydown",e=>{
+  if(e.repeat||["INPUT","SELECT","TEXTAREA"].includes(e.target.tagName)) return;
+  if(e.key===" "){ e.preventDefault(); if(detectedNotes.length) togglePlay(); return; }
+  const note=KB_MAP[e.key.toLowerCase()]; if(!note) return;
+  ensureAudio(); playTone(note,0.6);
+  handleKeyPress(note);
+  const el=getKeyEl(note); if(el) el.classList.add("pressed");
+});
+document.addEventListener("keyup",e=>{
+  const note=KB_MAP[e.key.toLowerCase()]; if(!note) return;
+  const el=getKeyEl(note); if(el) el.classList.remove("pressed");
+});
 
-    try {
-      const fd = new FormData();
-      fd.append("file", blob, blob.name || `recording_${Date.now()}.webm`);
-      fd.append("instrument", $("instrumentSelect").value);
-      fd.append("level", $("levelSelect").value);
+// ── Status ────────────────────────────────────────
+function setStatus(type,msg){
+  const d=$("statusDot"), t=$("statusText");
+  d.className="status-dot"+(type?" "+type:"");
+  t.textContent=msg;
+}
 
-      $("loadingText").textContent = "Detecting notes…";
-      const res = await fetch(`${API_BASE}/analyze`, { method: "POST", body: fd });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Server error" }));
-        throw new Error(err.detail || "Analysis failed");
-      }
+// ── Helpers ───────────────────────────────────────
+function fmtBytes(b){ return b<1024?b+"B":b<1048576?(b/1024).toFixed(1)+"KB":(b/1048576).toFixed(1)+"MB"; }
+function fmtTime(s){ return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`; }
 
-      const data = await res.json();
-      $("loadingText").textContent = "Building piano sequence…";
-      await new Promise(r => setTimeout(r, 300)); // brief pause for UX
+// ── Init ──────────────────────────────────────────
+buildKeys();
+drawIdleWave();
 
-      handleAnalysisResult(data);
-      setStatus("ready", `Found ${data.analysis.detected_notes.length} notes`);
-
-    } catch (err) {
-      console.error(err);
-      setStatus("error", err.message || "Analysis failed — is the backend running?");
-      loadingOverlay.classList.remove("visible");
-
-      // Fallback demo mode if backend is offline
-      if (err.message.includes("fetch") || err.message.includes("Failed")) {
-        loadDemoMode();
-      }
-    } finally {
-      analyzeBtn.classList.remove("loading");
-      analyzeBtn.disabled = false;
-      loadingOverlay.classList.remove("visible");
-    }
-  }
-
-  function handleAnalysisResult(data) {
-    const { detected_notes, tempo, key_center, duration, lesson } = data.analysis;
-
-    // Update stats
-    $("statNotes").textContent = detected_notes.length;
-    $("statTempo").textContent = tempo ? Math.round(tempo) : "—";
-    $("statKey").textContent = key_center || "—";
-    $("statDur").textContent = duration ? `${duration.toFixed(1)}s` : "—";
-    $("lessonTip").textContent = lesson || "Practice slowly, one note at a time.";
-
-    // Build note sequence display
-    renderNoteChips(detected_notes);
-
-    // Build playback sequence
-    // Each note gets a duration of ~0.4s at 1× speed; adjust if we have duration info
-    detectedNotes = detected_notes.map((n, i) => ({
-      note: n.note || n,
-      duration: n.duration || 0.5,
-    }));
-
-    // Total duration
-    const totalDur = detectedNotes.reduce((s, n) => s + n.duration, 0);
-    timeDuration.textContent = formatTime(totalDur);
-    timeElapsed.textContent = "0:00";
-    progressFill.style.width = "0%";
-
-    // Enable controls
-    playBtn.disabled = false;
-    rewindBtn.disabled = false;
-    loopBtn.disabled = false;
-    emptyState.style.display = "none";
-    resultsSection.style.display = "block";
-    currentNoteIdx = 0;
-  }
-
-  function loadDemoMode() {
-    // Offline demo: play a C major scale
-    const demoNotes = ["C4","E4","G4","C5","G4","E4","D4","F4","A4","C5","B4","G4","E4","C4"];
-    handleAnalysisResult({
-      analysis: {
-        detected_notes: demoNotes.map(n => ({ note: n, duration: 0.45 })),
-        tempo: 120,
-        key_center: "C",
-        duration: demoNotes.length * 0.45,
-        lesson: "Demo mode — backend offline. This is a C major scale for practice.",
-      }
-    });
-    setStatus("ready", "Demo mode — backend offline");
-  }
-
-  function renderNoteChips(notes) {
-    noteSequenceEl.innerHTML = "";
-    notes.forEach((n, i) => {
-      const chip = document.createElement("span");
-      chip.className = "note-chip";
-      chip.dataset.idx = i;
-      chip.textContent = typeof n === "string" ? n : n.note;
-      noteSequenceEl.appendChild(chip);
-    });
-  }
-
-  // ── Playback engine ─────────────────────────────────────────
-  let playbackElapsed = 0;
-  let playbackStartTime = null;
-  let playbackRAF = null;
-
-  playBtn.addEventListener("click", () => {
-    if (isPlaying) pausePlayback();
-    else startPlayback();
-  });
-
-  rewindBtn.addEventListener("click", () => {
-    stopPlayback();
-    currentNoteIdx = 0;
-    playbackElapsed = 0;
-    progressFill.style.width = "0%";
-    timeElapsed.textContent = "0:00";
-    // Release all highlighted keys
-    document.querySelectorAll(".key-white.highlight, .key-black.highlight").forEach(k => k.classList.remove("highlight"));
-  });
-
-  loopBtn.addEventListener("click", () => {
-    isLooping = !isLooping;
-    loopBtn.style.color = isLooping ? "var(--accent)" : "";
-  });
-
-  speedSlider.addEventListener("input", () => {
-    playbackSpeed = parseFloat(speedSlider.value);
-    speedValue.textContent = playbackSpeed + "×";
-  });
-
-  function startPlayback() {
-    if (!detectedNotes.length) return;
-    ensureAudio();
-    isPlaying = true;
-    $("playIcon").style.display = "none";
-    $("pauseIcon").style.display = "block";
-
-    scheduleNotes();
-  }
-
-  function pausePlayback() {
-    isPlaying = false;
-    $("playIcon").style.display = "block";
-    $("pauseIcon").style.display = "none";
-    clearTimeout(playbackTimer);
-    cancelAnimationFrame(playbackRAF);
-    // Release all highlighted keys
-    document.querySelectorAll(".key-white.highlight, .key-black.highlight").forEach(k => k.classList.remove("highlight"));
-  }
-
-  function stopPlayback() {
-    pausePlayback();
-    currentNoteIdx = 0;
-    playbackElapsed = 0;
-  }
-
-  function scheduleNotes() {
-    if (!isPlaying) return;
-    if (currentNoteIdx >= detectedNotes.length) {
-      if (isLooping) {
-        currentNoteIdx = 0;
-        playbackElapsed = 0;
-      } else {
-        pausePlayback();
-        return;
-      }
-    }
-
-    const { note, duration } = detectedNotes[currentNoteIdx];
-    const noteDur = duration / playbackSpeed;
-
-    // Highlight chip
-    document.querySelectorAll(".note-chip").forEach(c => c.classList.remove("active-chip"));
-    const chip = noteSequenceEl.querySelector(`[data-idx="${currentNoteIdx}"]`);
-    if (chip) {
-      chip.classList.add("active-chip");
-      chip.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
-
-    // Play sound + visual
-    playNoteSound(note, noteDur * 0.9);
-    pressKey(note);
-
-    // Release key after duration
-    setTimeout(() => releaseKey(note), noteDur * 900);
-
-    // Update progress
-    updateProgress();
-
-    currentNoteIdx++;
-    playbackElapsed += duration;
-
-    playbackTimer = setTimeout(scheduleNotes, noteDur * 1000);
-  }
-
-  function updateProgress() {
-    const total = detectedNotes.reduce((s, n) => s + n.duration, 0);
-    const elapsed = detectedNotes.slice(0, currentNoteIdx).reduce((s, n) => s + n.duration, 0);
-    const pct = total > 0 ? (elapsed / total) * 100 : 0;
-    progressFill.style.width = pct + "%";
-    timeElapsed.textContent = formatTime(elapsed / playbackSpeed);
-  }
-
-  // Click on progress bar to seek
-  $("progressTrack").addEventListener("click", (e) => {
-    if (!detectedNotes.length) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    const total = detectedNotes.reduce((s, n) => s + n.duration, 0);
-    let elapsed = 0;
-    let idx = 0;
-    for (let i = 0; i < detectedNotes.length; i++) {
-      if ((elapsed + detectedNotes[i].duration) / total >= pct) { idx = i; break; }
-      elapsed += detectedNotes[i].duration;
-      idx = i + 1;
-    }
-    const wasPlaying = isPlaying;
-    pausePlayback();
-    currentNoteIdx = idx;
-    playbackElapsed = elapsed;
-    progressFill.style.width = (pct * 100) + "%";
-    timeElapsed.textContent = formatTime(elapsed);
-    if (wasPlaying) startPlayback();
-  });
-
-  // ── Helpers ─────────────────────────────────────────────────
-  function setStatus(type, msg) {
-    statusDot.className = "status-dot" + (type ? " " + type : "");
-    statusText.textContent = msg;
-  }
-
-  function formatBytes(b) {
-    if (b < 1024) return b + " B";
-    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
-    return (b / 1024 / 1024).toFixed(1) + " MB";
-  }
-
-  function formatTime(s) {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec.toString().padStart(2, "0")}`;
-  }
-
-  // ── Init ─────────────────────────────────────────────────────
-  buildKeyboard();
-  drawIdleWave();
-
-  // Try backend health check
-  fetch(`${API_BASE}/`).then(() => {
-    setStatus("ready", "Backend connected — ready to analyze");
-  }).catch(() => {
-    setStatus("", "Backend offline — demo mode available");
-  });
-
-  </script>
+fetch(API+"/").then(()=>setStatus("on","Backend connected")).catch(()=>setStatus("","Backend offline — demo available"));
+</script>
 </body>
 </html>

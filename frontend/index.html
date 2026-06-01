@@ -274,6 +274,12 @@
       box-shadow:0 0 20px rgba(62,207,142,.5),0 0 0 2px var(--green);
       transform:translateY(3px);
     }
+    .kw.wrong{
+      background:linear-gradient(180deg,#ff8080 0%,#ffaaaa 25%,#ff6060 100%);
+      box-shadow:0 0 20px rgba(255,85,85,.55),0 0 0 2px var(--red);
+      transform:translateY(3px);animation:wrong-flash .3s ease;
+    }
+    @keyframes wrong-flash{0%{box-shadow:0 0 30px rgba(255,85,85,.9),0 0 0 3px var(--red)}to{box-shadow:0 0 20px rgba(255,85,85,.55),0 0 0 2px var(--red)}}
 
     /* black keys */
     .kb{
@@ -303,6 +309,11 @@
     .kb.correct{
       background:linear-gradient(180deg,#208050 0%,#186040 60%,#104030 100%);
       box-shadow:0 0 14px rgba(62,207,142,.5),0 0 0 2px var(--green);
+      transform:translateY(3px);
+    }
+    .kb.wrong{
+      background:linear-gradient(180deg,#902020 0%,#701818 60%,#501010 100%);
+      box-shadow:0 0 14px rgba(255,85,85,.55),0 0 0 2px var(--red);
       transform:translateY(3px);
     }
 
@@ -669,6 +680,43 @@ function playTone(note, dur=0.5){
   osc.start(t); osc.stop(t+dur+0.05);
 }
 
+// Schedule a note at a specific AudioContext time (Step 3)
+function scheduleTone(note, dur, when){
+  ensureAudio();
+  const k = ALL_KEYS.find(k=>k.note===note); if(!k) return;
+  const freq = noteFreq(k.name, k.oct);
+  const osc  = actx.createOscillator();
+  const env  = actx.createGain();
+  osc.type = "triangle"; osc.frequency.value = freq;
+  env.gain.setValueAtTime(0, when);
+  env.gain.linearRampToValueAtTime(1, when+0.005);
+  env.gain.linearRampToValueAtTime(0.6, when+0.04);
+  env.gain.setValueAtTime(0.6, when+dur-0.1);
+  env.gain.linearRampToValueAtTime(0, when+dur);
+  osc.connect(env).connect(masterGain);
+  osc.start(when); osc.stop(when+dur+0.05);
+  scheduledNodes.push(osc);
+}
+
+function cancelScheduledNotes(){
+  scheduledNodes.forEach(n=>{ try{ n.stop(0); }catch(e){} });
+  scheduledNodes = [];
+}
+
+// Pre-schedule all notes from current song position (replaces setTimeout chain)
+function scheduleAllNotes(){
+  cancelScheduledNotes();
+  if(!actx || !detectedNotes.length) return;
+  const songStart = pbStartSongT;
+  const audioStart = pbStartAudioT;
+  for(const note of detectedNotes){
+    const delay = (note.start_time - songStart) / playSpeed;
+    if(delay < -0.05) continue; // already past
+    const when = audioStart + delay;
+    scheduleTone(note.note, note.duration / playSpeed, when);
+  }
+}
+
 // ── state ─────────────────────────────────────────
 let currentMode = "playback"; // "playback" | "tutorial"
 let detectedNotes = [];       // [{note, duration}]
@@ -694,6 +742,9 @@ function songTime(){
   return pbStartSongT + (actx.currentTime - pbStartAudioT) * playSpeed;
 }
 
+// ── Scheduled audio nodes (Step 3) ────────────────────
+let scheduledNodes = [];
+
 // ── Falling bars ───────────────────────────────────────
 const KEY_POS = {};       // note → {x, w}  (precomputed)
 const FALL_H   = 200;     // canvas height px
@@ -701,6 +752,15 @@ const NOW_LINE = 176;     // y of "play now" line in canvas
 const PPS_BASE = 120;     // pixels per second at 1× speed
 let   fallRaf  = null;
 const activeBarNotes = new Set();
+let   lastChipIdx = -1;   // for incremental chip updates
+
+// ── Practice mode state (Step 4) ──────────────────────
+let practiceStream      = null;
+let practiceAnalyser    = null;
+let practiceAudioSrc    = null;
+let practiceInterval    = null;
+let practiceLastNote    = null;   // debounce: last mic-detected note
+let practiceExpectedNote = null;  // current expected note (time-driven)
 
 // ── DOM helpers ───────────────────────────────────
 const $=id=>document.getElementById(id);
@@ -899,6 +959,12 @@ function drawFallBars(){
   activeBarNotes.clear();
   newActive.forEach(n=>activeBarNotes.add(n));
 
+  // Practice: update expected note from song time
+  if(currentMode==="practice" && isPlaying) updatePracticeExpected(t);
+
+  // Chip highlight (all modes)
+  updateChipsFromTime(t);
+
   // Update seek bar smoothly from song time
   updateSeekFromTime(t);
 
@@ -906,8 +972,11 @@ function drawFallBars(){
   if(isPlaying && detectedNotes.length){
     const last = detectedNotes.at(-1);
     if(t >= last.start_time + last.duration){
-      if(isLooping){ pbStartSongT=0; pbStartAudioT=actx?actx.currentTime:0; }
-      else pausePlayback();
+      if(isLooping){
+        pbStartSongT=0; pbStartAudioT=actx?actx.currentTime:0;
+        lastChipIdx=-1;
+        if(currentMode==="playback") scheduleAllNotes();
+      } else pausePlayback();
     }
   }
 }
@@ -938,6 +1007,159 @@ function updateSeekFromTime(t){
   $("miniFill").style.width = pct+"%";
 }
 
+function updateChipsFromTime(t){
+  if(!detectedNotes.length) return;
+  let idx=-1;
+  for(let i=0;i<detectedNotes.length;i++){
+    if(detectedNotes[i].start_time<=t) idx=i; else break;
+  }
+  if(idx===lastChipIdx) return; // no DOM work if unchanged
+  lastChipIdx=idx;
+  document.querySelectorAll(".chip").forEach((c,i)=>{
+    c.classList.remove("current","next-up","done");
+    if(i<idx)       c.classList.add("done");
+    else if(i===idx) c.classList.add("current");
+    else if(i===idx+1) c.classList.add("next-up");
+  });
+}
+
+// ── Practice mode — pitch detection (Step 4) ──────────
+
+// Autocorrelation-based monophonic pitch detection.
+// Works on the time-domain buffer from an AnalyserNode.
+function detectPitch(analyserNode){
+  if(!analyserNode || !actx) return null;
+  const BUF = 2048;
+  const buf  = new Float32Array(BUF);
+  analyserNode.getFloatTimeDomainData(buf);
+
+  // Reject silence
+  let rms=0;
+  for(let i=0;i<BUF;i++) rms+=buf[i]*buf[i];
+  if(Math.sqrt(rms/BUF) < 0.012) return null;
+
+  const sr  = actx.sampleRate;
+  const lo  = Math.ceil(sr / 2100);              // C7 ≈ top of piano range
+  const hi  = Math.min(Math.floor(sr / 50), BUF>>1); // A1 ≈ bottom of useful range
+
+  // Normalized autocorrelation — best lag = fundamental period
+  let bestLag=-1, bestVal=-Infinity;
+  for(let lag=lo; lag<hi; lag++){
+    let sum=0;
+    const n=BUF-lag;
+    for(let i=0;i<n;i++) sum+=buf[i]*buf[i+lag];
+    const norm=sum/n; // normalize by overlap count to reduce lag bias
+    if(norm>bestVal){ bestVal=norm; bestLag=lag; }
+  }
+  return bestLag>0 ? sr/bestLag : null;
+}
+
+// JS port of the backend freq_to_note helper
+function freqToNoteJS(freq){
+  if(!freq||freq<=0) return null;
+  const midi=Math.round(12*Math.log2(freq/440)+69);
+  if(midi<21||midi>108) return null;
+  const oct=Math.floor(midi/12)-1;
+  return NAMES[midi%12]+oct;
+}
+
+// Set the next-note display to its idle/waiting state for practice mode
+function setPracticeIdleDisplay(){
+  $("nextNoteDisplay").classList.add("visible");
+  $("nextNoteDisplay").classList.remove("correct");
+  $("nextNoteLabel").textContent = "Press Play to begin";
+  $("nextNoteName").textContent  = "—";
+  $("nextNoteSub").textContent   = "Play along to the falling bars";
+}
+
+// Update the yellow expected key from the current song time (called from rAF loop)
+function updatePracticeExpected(t){
+  // Expected note = last note whose start_time window has opened
+  let idx=-1;
+  for(let i=0;i<detectedNotes.length;i++){
+    if(detectedNotes[i].start_time - 0.08 <= t) idx=i; else break;
+  }
+  const newNote = (idx>=0 && idx<detectedNotes.length) ? detectedNotes[idx].note : null;
+  if(newNote===practiceExpectedNote) return;
+
+  if(practiceExpectedNote) clearKey(practiceExpectedNote,"next");
+  practiceExpectedNote=newNote;
+  if(newNote){
+    lightKey(newNote,"next");
+    scrollToKey(newNote);
+    $("nextNoteName").textContent  = newNote;
+    $("nextNoteLabel").textContent = `Note ${idx+1} of ${detectedNotes.length}`;
+    $("nextNoteSub").textContent   = "Play the highlighted key";
+    $("nextNoteDisplay").classList.remove("correct");
+    $("nextNoteDisplay").classList.add("visible");
+  }
+}
+
+// Handle a pitch input in practice mode (from mic or on-screen keyboard click)
+function handlePracticeInput(playedNote){
+  if(currentMode!=="practice" || !practiceExpectedNote) return;
+  const playedPc   = noteToMidi(playedNote)   % 12;
+  const expectedPc = noteToMidi(practiceExpectedNote) % 12;
+
+  if(playedPc===expectedPc){
+    // ✓ Correct pitch class
+    const exp = practiceExpectedNote;
+    clearKey(exp,"next");
+    lightKey(exp,"correct");
+    if(playedNote!==exp){ lightKey(playedNote,"correct"); }
+    showCorrect(playedNote);
+    setTimeout(()=>{
+      clearKey(exp,"correct");
+      if(playedNote!==exp) clearKey(playedNote,"correct");
+      // Restore yellow if still expected
+      if(practiceExpectedNote===exp) lightKey(exp,"next");
+    }, 500);
+  } else {
+    // ✗ Wrong note — brief red flash, yellow stays on expected
+    lightKey(playedNote,"wrong");
+    setTimeout(()=>clearKey(playedNote,"wrong"), 350);
+  }
+}
+
+// Poll the mic AnalyserNode for a new pitch reading every ~40 ms
+function practiceDetect(){
+  if(!practiceAnalyser||!actx) return;
+  const freq=detectPitch(practiceAnalyser);
+  if(!freq){ practiceLastNote=null; return; }
+  const note=freqToNoteJS(freq);
+  if(!note) return;
+  if(note===practiceLastNote) return; // debounce: same note still ringing
+  practiceLastNote=note;
+  if(isPlaying) handlePracticeInput(note);
+}
+
+async function startPractice(){
+  stopPractice();
+  try{
+    setStatus("busy","Requesting mic…");
+    practiceStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    ensureAudio();
+    practiceAudioSrc = actx.createMediaStreamSource(practiceStream);
+    practiceAnalyser = actx.createAnalyser();
+    practiceAnalyser.fftSize = 2048;
+    practiceAnalyser.smoothingTimeConstant = 0; // no temporal smoothing — we want instant response
+    practiceAudioSrc.connect(practiceAnalyser);
+    practiceInterval = setInterval(practiceDetect, 40); // 25 fps
+    setStatus("on","🎤 Mic ready");
+  } catch(e){
+    setStatus("err","Mic denied — use Tutorial mode for on-screen keys");
+  }
+}
+
+function stopPractice(){
+  if(practiceInterval){ clearInterval(practiceInterval); practiceInterval=null; }
+  if(practiceAudioSrc){ try{practiceAudioSrc.disconnect();}catch(e){} practiceAudioSrc=null; }
+  if(practiceStream){ practiceStream.getTracks().forEach(t=>t.stop()); practiceStream=null; }
+  practiceAnalyser=null; practiceLastNote=null;
+  if(practiceExpectedNote){ clearKey(practiceExpectedNote,"next"); practiceExpectedNote=null; }
+  $("nextNoteDisplay").classList.remove("visible");
+}
+
 function lightKey(note, cls){
   const el = getKeyEl(note); if(!el) return;
   el.classList.add(cls);
@@ -957,26 +1179,32 @@ function handleKeyPress(note){
 
   if(currentMode==="tutorial" && isPlaying && detectedNotes.length){
     const expected = detectedNotes[tutorialIdx]?.note;
-    if(note === expected){
-      // Correct!
+    if(note===expected){
       clearKey(note,"next");
       lightKey(note,"correct");
       showCorrect(note);
       setTimeout(()=>clearKey(note,"correct"), 500);
       advanceTutorial();
     }
-    // wrong note — no penalty, just plays the sound
+    // wrong note — no visual penalty, audio plays normally
+  } else if(currentMode==="practice"){
+    // On-screen keys also feed the practice evaluator
+    handlePracticeInput(note);
   }
 }
 
 // ── Mode switching ────────────────────────────────
 function setMode(mode){
-  currentMode = mode;
-  document.querySelectorAll(".pill").forEach(p=>p.classList.toggle("active", p.dataset.mode===mode));
+  const prev=currentMode;
+  currentMode=mode;
+  document.querySelectorAll(".pill").forEach(p=>p.classList.toggle("active",p.dataset.mode===mode));
   stopPlayback();
-  clearAllKeys("next","playing","correct","done");
-  activeBarNotes.clear();
+  clearAllKeys("next","playing","correct","done","wrong");
+  activeBarNotes.clear(); lastChipIdx=-1;
   drawFallBars();
+
+  // Tear down mic when leaving practice
+  if(prev==="practice" && mode!=="practice") stopPractice();
 
   if(mode==="playback"){
     $("modeIcon").innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
@@ -989,11 +1217,11 @@ function setMode(mode){
     $("modeSub").textContent="Yellow key = your next note. Press it to advance!";
     if(detectedNotes.length) showTutorialPrompt();
   } else {
-    // practice — placeholder until Step 4
     $("modeIcon").innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
     $("modeTitle").textContent="Practice Mode";
-    $("modeSub").textContent="Play along — microphone detects your notes and gives live feedback";
-    if(detectedNotes.length) showTutorialPrompt();
+    $("modeSub").textContent="Play along — mic detects your notes and gives green/red feedback";
+    if(detectedNotes.length) setPracticeIdleDisplay();
+    startPractice(); // async — opens mic immediately on mode switch
   }
 }
 
@@ -1170,15 +1398,16 @@ function renderChips(){
 
 function afterLoad(){
   $("welcome").style.display="none";
-  playIdx=0; tutorialIdx=0; pbStartSongT=0;
+  playIdx=0; tutorialIdx=0; pbStartSongT=0; lastChipIdx=-1;
   activeBarNotes.clear();
   $("playBtn").disabled=false;
   $("restartBtn").disabled=false;
   $("loopBtn").disabled=false;
   $("fallHint").style.display="none";
   updateSeek(0);
-  drawFallBars(); // static preview of all bars at t=0
+  drawFallBars();
   if(currentMode==="tutorial") showTutorialPrompt();
+  else if(currentMode==="practice") setPracticeIdleDisplay();
 }
 
 // ── Playback ──────────────────────────────────────
@@ -1189,16 +1418,27 @@ function startPlayback(){
   if(!detectedNotes.length) return;
   ensureAudio(); isPlaying=true;
   pbStartAudioT = actx.currentTime;
-  // pbStartSongT already set (0 initially, or saved from pause/seek)
+  lastChipIdx   = -1; // force chip re-render on start
   $("iconPlay").style.display="none"; $("iconPause").style.display="block";
-  if(currentMode==="tutorial") runTutorial();
-  else { runAutoPlay(); startFallAnim(); }
+  if(currentMode==="tutorial"){
+    runTutorial();
+  } else if(currentMode==="practice"){
+    practiceExpectedNote = null; // will be set by rAF loop
+    startFallAnim();
+  } else {
+    runAutoPlay();   // schedules audio
+    startFallAnim(); // drives visuals
+  }
 }
 function pausePlayback(){
   if(isPlaying && actx) pbStartSongT = songTime(); // save position
   isPlaying=false;
   $("iconPlay").style.display="block"; $("iconPause").style.display="none";
-  clearTimeout(playTimer); clearAllKeys("playing","next");
+  clearTimeout(playTimer);
+  cancelScheduledNotes();
+  if(practiceExpectedNote){ clearKey(practiceExpectedNote,"next"); practiceExpectedNote=null; }
+  clearAllKeys("playing","next","wrong");
+  activeBarNotes.clear();
   stopFallAnim();
 }
 function stopPlayback(){
@@ -1208,12 +1448,18 @@ function stopPlayback(){
 }
 function restartPlayback(){
   stopPlayback();
-  pbStartSongT=0;
-  clearAllKeys("next","playing","correct","done");
+  pbStartSongT=0; lastChipIdx=-1;
+  clearAllKeys("next","playing","correct","done","wrong");
   activeBarNotes.clear();
   renderChips();
-  drawFallBars(); // static frame at t=0
-  if(currentMode==="tutorial"){ showTutorialPrompt(); } else { $("nextNoteDisplay").classList.remove("visible"); }
+  drawFallBars();
+  if(currentMode==="tutorial"){
+    showTutorialPrompt();
+  } else if(currentMode==="practice"){
+    setPracticeIdleDisplay();
+  } else {
+    $("nextNoteDisplay").classList.remove("visible");
+  }
 }
 function toggleLoop(){
   isLooping=!isLooping;
@@ -1242,31 +1488,10 @@ function seek(e){
   if(wasPlaying) startPlayback();
 }
 
-// Auto-play mode: schedule each note
+// Playback mode: pre-schedule all notes via AudioContext (Step 3)
+// Key highlights + chip updates are driven by the rAF fall-animation loop.
 function runAutoPlay(){
-  if(!isPlaying) return;
-  if(playIdx>=detectedNotes.length){
-    if(isLooping){playIdx=0;renderChips();runAutoPlay();} else {pausePlayback();return;}
-  }
-  const {note,duration} = detectedNotes[playIdx];
-  const dur = duration/playSpeed;
-
-  // update chip
-  document.querySelectorAll(".chip").forEach((c,i)=>{
-    c.classList.remove("current","next-up","done");
-    if(i<playIdx) c.classList.add("done");
-    else if(i===playIdx) c.classList.add("current");
-    else if(i===playIdx+1) c.classList.add("next-up");
-  });
-
-  clearAllKeys("playing");
-  lightKey(note,"playing");
-  playTone(note, dur*0.88);
-  setTimeout(()=>clearKey(note,"playing"), dur*900);
-
-  updateSeek(playIdx);
-  playIdx++;
-  playTimer = setTimeout(runAutoPlay, dur*1000);
+  scheduleAllNotes(); // all oscillators created at precise AudioContext times
 }
 
 // Tutorial mode: highlight next key, wait for user to press it

@@ -61,8 +61,26 @@ def test_analyze_wav():
     assert r.status_code == 200
     data = r.json()
     assert "analysis" in data
-    assert "detected_notes" in data["analysis"]
-    assert isinstance(data["analysis"]["detected_notes"], list)
+    notes = data["analysis"]["detected_notes"]
+    assert isinstance(notes, list)
+    # Every note must carry start_time and be ordered ascending
+    for n in notes:
+        assert "start_time" in n, f"Missing start_time in note: {n}"
+        assert "duration" in n
+        assert n["start_time"] >= 0
+    times = [n["start_time"] for n in notes]
+    assert times == sorted(times), "Notes are not ordered by start_time"
+
+
+@pytest.mark.skipif(not HAS_DEPS, reason="FastAPI deps not installed")
+def test_freq_to_note_helper():
+    """freq_to_note must map known piano frequencies to the correct note name."""
+    from backend.app.main import freq_to_note
+    assert freq_to_note(261.63) == "C4"   # middle C
+    assert freq_to_note(440.0)  == "A4"
+    assert freq_to_note(329.63) == "E4"
+    assert freq_to_note(0) is None         # silence → None
+    assert freq_to_note(-1) is None        # invalid → None
 
 
 @pytest.mark.skipif(not HAS_DEPS, reason="FastAPI deps not installed")

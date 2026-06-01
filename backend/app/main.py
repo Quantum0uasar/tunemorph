@@ -201,7 +201,12 @@ def detect_notes_librosa(wav_path: Path) -> Dict[str, Any]:
         if note_name is None:
             continue
 
-        notes_out.append({"note": note_name, "duration": round(note_dur, 3), "freq": round(median_freq, 2)})
+        notes_out.append({
+            "note": note_name,
+            "start_time": round(float(onset_t), 3),
+            "duration": round(note_dur, 3),
+            "freq": round(median_freq, 2),
+        })
 
     # Cap at 64 notes for playback UX
     notes_out = notes_out[:64]
@@ -223,7 +228,7 @@ def detect_notes_stub(filename: str) -> Dict[str, Any]:
     Returns a C major scale as a demo response.
     """
     scale = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"]
-    notes = [{"note": n, "duration": 0.5, "freq": 0.0} for n in scale]
+    notes = [{"note": n, "start_time": round(i * 0.5, 3), "duration": 0.5, "freq": 0.0} for i, n in enumerate(scale)]
     return {
         "detected_notes": notes,
         "tempo": 120.0,
@@ -238,6 +243,7 @@ def detect_notes_stub(filename: str) -> Dict[str, Any]:
 
 class NoteEvent(BaseModel):
     note: str
+    start_time: float
     duration: float
     freq: Optional[float] = None
 

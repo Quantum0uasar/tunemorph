@@ -221,7 +221,7 @@
     .keyboard-wrap{
       position:relative;
       background:#16101e;
-      border-radius:14px;
+      border-radius:0 0 14px 14px;
       padding:12px 16px 0;
       box-shadow:
         0 0 0 1px rgba(255,255,255,.05),
@@ -358,6 +358,26 @@
     .welcome h2{font-size:16px;font-weight:700;color:var(--muted)}
     .welcome p{font-size:12px;max-width:260px;line-height:1.6}
 
+    /* ── falls canvas ── */
+    .piano-unit{display:flex;flex-direction:column;max-width:100%}
+    .falls-scroll-wrap{
+      overflow:hidden;flex-shrink:0;
+      border-radius:14px 14px 0 0;
+      background:#0a0a12;
+      box-shadow:0 0 0 1px rgba(255,255,255,.04);
+      position:relative;
+    }
+    #fallCanvas{display:block}
+    .fall-hint{
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      font-size:11px;color:var(--faint);pointer-events:none;letter-spacing:.05em;
+    }
+    .now-line-label{
+      position:absolute;right:8px;bottom:22px;
+      font-size:9px;color:rgba(255,255,255,.2);font-family:var(--mono);
+      pointer-events:none;letter-spacing:.04em;
+    }
+
     /* loading overlay */
     .overlay{
       position:absolute;inset:0;background:rgba(10,10,15,.88);
@@ -397,6 +417,7 @@
     <div class="mode-pills">
       <button class="pill active" data-mode="playback" onclick="setMode('playback')">▶ Auto Play</button>
       <button class="pill" data-mode="tutorial" onclick="setMode('tutorial')">🎹 Tutorial</button>
+      <button class="pill" data-mode="practice" onclick="setMode('practice')">🎤 Practice</button>
     </div>
 
     <div class="header-right">
@@ -528,6 +549,16 @@
           <div class="next-note-sub" id="nextNoteSub">Press the highlighted key</div>
         </div>
 
+        <!-- Falls + Keyboard unit -->
+        <div class="piano-unit">
+
+        <!-- Falling bars canvas -->
+        <div class="falls-scroll-wrap" id="fallsScrollWrap">
+          <canvas id="fallCanvas" height="200"></canvas>
+          <div class="fall-hint" id="fallHint">Detect notes to see the falling bars</div>
+          <div class="now-line-label">▶ play now</div>
+        </div>
+
         <!-- Keyboard -->
         <div class="keyboard-wrap" id="keyboardWrap" style="position:relative">
           <div class="overlay" id="loadingOverlay">
@@ -538,7 +569,8 @@
             <p id="overlayText">Analyzing audio…</p>
           </div>
           <div class="keys" id="keys"></div>
-        </div>
+        </div><!-- /keyboard-wrap -->
+        </div><!-- /piano-unit -->
 
         <!-- Welcome state -->
         <div class="welcome" id="welcome">
@@ -653,6 +685,23 @@ let currentBlob = null;
 // recording
 let mediaRec = null, recChunks = [], recSecs = 0, recInterval = null;
 
+// ── AudioContext-based timing ──────────────────────────
+let pbStartAudioT = 0;   // actx.currentTime when playback began
+let pbStartSongT  = 0;   // song-seconds at which playback began
+
+function songTime(){
+  if(!actx || !isPlaying) return pbStartSongT;
+  return pbStartSongT + (actx.currentTime - pbStartAudioT) * playSpeed;
+}
+
+// ── Falling bars ───────────────────────────────────────
+const KEY_POS = {};       // note → {x, w}  (precomputed)
+const FALL_H   = 200;     // canvas height px
+const NOW_LINE = 176;     // y of "play now" line in canvas
+const PPS_BASE = 120;     // pixels per second at 1× speed
+let   fallRaf  = null;
+const activeBarNotes = new Set();
+
 // ── DOM helpers ───────────────────────────────────
 const $=id=>document.getElementById(id);
 
@@ -718,9 +767,176 @@ function buildKeys(){
 
     container.appendChild(el);
   });
+
+  // Set canvas width to match piano + padding
+  const pianoW = whites.length * W - 3;
+  const canvasW = pianoW + 32; // 16px padding each side
+  const fc = $("fallCanvas");
+  fc.width = canvasW;
+  // falls-scroll-wrap width equals keyboard-wrap width (both max-width:100%)
+  computeKeyPositions(W);
 }
 
 function getKeyEl(note){ return $("keys").querySelector(`[data-note="${note}"]`); }
+
+// ── Key position precomputation ────────────────────────
+function computeKeyPositions(W){
+  // W = white-key stride (48+3=51)
+  const PAD = 16; // keyboard-wrap left padding
+  let wi = 0;
+  for(const k of ALL_KEYS){
+    if(!k.black){ KEY_POS[k.note]={x:PAD+wi*W, w:48}; wi++; }
+  }
+  for(const k of ALL_KEYS){
+    if(!k.black) continue;
+    let wc=0;
+    for(const k2 of ALL_KEYS){ if(k2.note===k.note) break; if(!k2.black) wc++; }
+    KEY_POS[k.note]={x:PAD+wc*W-15, w:30};
+  }
+}
+
+function noteToMidi(noteStr){
+  const name = noteStr.replace(/[^A-G#]/g,'');
+  const oct  = parseInt(noteStr.replace(/[^-\d]/g,''), 10);
+  return isNaN(oct) ? 0 : (oct+1)*12 + NAMES.indexOf(name);
+}
+
+// ── Falling bars animation ─────────────────────────────
+function roundRect(ctx,x,y,w,h,r){
+  if(h<=0||w<=0) return;
+  r=Math.min(r,h/2,w/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+  ctx.arcTo(x+w,y,x+w,y+r,r); ctx.lineTo(x+w,y+h-r);
+  ctx.arcTo(x+w,y+h,x+w-r,y+h,r); ctx.lineTo(x+r,y+h);
+  ctx.arcTo(x,y+h,x,y+h-r,r); ctx.lineTo(x,y+r);
+  ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
+}
+
+function drawFallBars(){
+  const canvas=$("fallCanvas");
+  if(!canvas) return;
+  const ctx=canvas.getContext("2d");
+  const CW=canvas.width, CH=FALL_H;
+  ctx.clearRect(0,0,CW,CH);
+
+  // Background
+  ctx.fillStyle="#0a0a12";
+  ctx.fillRect(0,0,CW,CH);
+
+  if(!detectedNotes.length){ return; }
+
+  const t   = songTime();
+  const pps = PPS_BASE * playSpeed;
+
+  const newActive = new Set();
+
+  for(const note of detectedNotes){
+    const pos = KEY_POS[note.note];
+    if(!pos) continue;
+
+    // barBottom = position at which note starts playing (crosses now line)
+    const barBottom = NOW_LINE - (note.start_time - t)*pps;
+    const barHeight = Math.max(note.duration*pps, 4);
+    const barTop    = barBottom - barHeight;
+
+    // Skip if entirely outside canvas
+    if(barBottom < -barHeight || barTop > CH+barHeight) continue;
+
+    // State flags
+    const isCrossing = barBottom >= NOW_LINE && barTop < NOW_LINE;
+    const isPast     = barTop    >= NOW_LINE;
+    const isRight    = noteToMidi(note.note) >= 60;
+
+    if(isCrossing) newActive.add(note.note);
+
+    // Color
+    let alpha = isPast ? 0.18 : isCrossing ? 1.0 : 0.78;
+    const r = isRight ? "124,111,255" : "62,207,188";
+    ctx.fillStyle = `rgba(${r},${alpha})`;
+
+    const clampTop    = Math.max(barTop, 0);
+    const clampBottom = Math.min(barBottom, CH);
+    const drawH       = clampBottom - clampTop;
+    if(drawH <= 0) continue;
+
+    roundRect(ctx, pos.x+2, clampTop, pos.w-4, drawH, 4);
+    ctx.fill();
+
+    // Glow ring at now-line crossing
+    if(isCrossing){
+      ctx.save();
+      ctx.shadowColor = isRight ? "rgba(124,111,255,.7)" : "rgba(62,207,188,.7)";
+      ctx.shadowBlur  = 10;
+      roundRect(ctx, pos.x+2, clampTop, pos.w-4, drawH, 4);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Note label if bar is tall enough and above now-line
+    if(barHeight>=18 && barTop>=0 && barTop<NOW_LINE){
+      ctx.fillStyle = isPast ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.85)";
+      ctx.font      = `600 9px "Space Mono",monospace`;
+      ctx.textAlign = "center";
+      ctx.fillText(note.note, pos.x+pos.w/2, Math.min(barTop+12, NOW_LINE-3));
+    }
+  }
+
+  // Now line
+  ctx.save();
+  ctx.shadowColor = "rgba(255,255,255,.4)";
+  ctx.shadowBlur  = 6;
+  ctx.strokeStyle = "rgba(255,255,255,.28)";
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath(); ctx.moveTo(0,NOW_LINE); ctx.lineTo(CW,NOW_LINE); ctx.stroke();
+  ctx.restore();
+
+  // Update piano key highlights (playback mode only)
+  if(currentMode==="playback"){
+    for(const n of activeBarNotes){ if(!newActive.has(n)) clearKey(n,"playing"); }
+    for(const n of newActive){ if(!activeBarNotes.has(n)) lightKey(n,"playing"); }
+  }
+  activeBarNotes.clear();
+  newActive.forEach(n=>activeBarNotes.add(n));
+
+  // Update seek bar smoothly from song time
+  updateSeekFromTime(t);
+
+  // Check sequence end
+  if(isPlaying && detectedNotes.length){
+    const last = detectedNotes.at(-1);
+    if(t >= last.start_time + last.duration){
+      if(isLooping){ pbStartSongT=0; pbStartAudioT=actx?actx.currentTime:0; }
+      else pausePlayback();
+    }
+  }
+}
+
+function startFallAnim(){
+  if(fallRaf) cancelAnimationFrame(fallRaf);
+  function frame(){ drawFallBars(); fallRaf=requestAnimationFrame(frame); }
+  fallRaf = requestAnimationFrame(frame);
+  $("fallHint").style.display="none";
+}
+
+function stopFallAnim(){
+  if(fallRaf){ cancelAnimationFrame(fallRaf); fallRaf=null; }
+  // Draw one static frame at the saved position
+  drawFallBars();
+}
+
+function updateSeekFromTime(t){
+  if(!detectedNotes.length) return;
+  const last  = detectedNotes.at(-1);
+  const total = last.start_time + last.duration;
+  const pct   = total>0 ? Math.min(t/total,1)*100 : 0;
+  $("seekFill").style.width = pct+"%";
+  $("tElapsed").textContent = fmtTime(t/playSpeed);
+  $("tTotal").textContent   = fmtTime(total/playSpeed);
+  const ni = detectedNotes.findIndex(n=>n.start_time>t);
+  $("progressLabel").textContent = `${ni<0?detectedNotes.length:ni} / ${detectedNotes.length}`;
+  $("miniFill").style.width = pct+"%";
+}
 
 function lightKey(note, cls){
   const el = getKeyEl(note); if(!el) return;
@@ -758,16 +974,25 @@ function setMode(mode){
   currentMode = mode;
   document.querySelectorAll(".pill").forEach(p=>p.classList.toggle("active", p.dataset.mode===mode));
   stopPlayback();
+  clearAllKeys("next","playing","correct","done");
+  activeBarNotes.clear();
+  drawFallBars();
 
   if(mode==="playback"){
     $("modeIcon").innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
     $("modeTitle").textContent="Auto Play";
-    $("modeSub").textContent="Detected notes will play automatically on the piano";
+    $("modeSub").textContent="Notes play automatically — watch the bars fall and the keys light up";
     $("nextNoteDisplay").classList.remove("visible");
-  } else {
+  } else if(mode==="tutorial"){
     $("modeIcon").innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
     $("modeTitle").textContent="Tutorial Mode";
     $("modeSub").textContent="Yellow key = your next note. Press it to advance!";
+    if(detectedNotes.length) showTutorialPrompt();
+  } else {
+    // practice — placeholder until Step 4
+    $("modeIcon").innerHTML=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+    $("modeTitle").textContent="Practice Mode";
+    $("modeSub").textContent="Play along — microphone detects your notes and gives live feedback";
     if(detectedNotes.length) showTutorialPrompt();
   }
 }
@@ -904,15 +1129,23 @@ async function runAnalysis(){
 
 function loadResult(data){
   const {detected_notes,tempo,key_center,duration,lesson} = data.analysis;
-  detectedNotes = detected_notes.map(n=>({note:typeof n==="string"?n:n.note, duration:n.duration||0.45}));
+  let cursor=0;
+  detectedNotes = detected_notes.map(n=>{
+    const note = typeof n==="string" ? n : n.note;
+    const dur  = n.duration || 0.45;
+    const st   = (n.start_time !== undefined) ? n.start_time : cursor;
+    cursor = st + dur;
+    return {note, start_time: st, duration: dur};
+  });
   renderResults(detected_notes.length, tempo, key_center, duration, lesson);
   afterLoad();
 }
 
 function loadDemo(){
   const scale=["C4","E4","G4","C5","B4","A4","G4","E4","D4","F4","A4","C5","B4","G4","E4","C4"];
-  detectedNotes = scale.map(n=>({note:n,duration:0.45}));
-  renderResults(scale.length,120,"C",scale.length*0.45,"Demo mode — backend offline. This is a C major melody.");
+  let t=0;
+  detectedNotes = scale.map(n=>{ const s={note:n,start_time:t,duration:0.45}; t+=0.45; return s; });
+  renderResults(scale.length,120,"C",t,"Demo mode — backend offline. This is a C major melody.");
   afterLoad();
 }
 
@@ -937,11 +1170,14 @@ function renderChips(){
 
 function afterLoad(){
   $("welcome").style.display="none";
-  playIdx=0; tutorialIdx=0;
+  playIdx=0; tutorialIdx=0; pbStartSongT=0;
+  activeBarNotes.clear();
   $("playBtn").disabled=false;
   $("restartBtn").disabled=false;
   $("loopBtn").disabled=false;
-  updateSeek();
+  $("fallHint").style.display="none";
+  updateSeek(0);
+  drawFallBars(); // static preview of all bars at t=0
   if(currentMode==="tutorial") showTutorialPrompt();
 }
 
@@ -952,21 +1188,31 @@ function togglePlay(){
 function startPlayback(){
   if(!detectedNotes.length) return;
   ensureAudio(); isPlaying=true;
+  pbStartAudioT = actx.currentTime;
+  // pbStartSongT already set (0 initially, or saved from pause/seek)
   $("iconPlay").style.display="none"; $("iconPause").style.display="block";
-  if(currentMode==="tutorial") runTutorial(); else runAutoPlay();
+  if(currentMode==="tutorial") runTutorial();
+  else { runAutoPlay(); startFallAnim(); }
 }
 function pausePlayback(){
+  if(isPlaying && actx) pbStartSongT = songTime(); // save position
   isPlaying=false;
   $("iconPlay").style.display="block"; $("iconPause").style.display="none";
   clearTimeout(playTimer); clearAllKeys("playing","next");
+  stopFallAnim();
 }
 function stopPlayback(){
-  pausePlayback(); playIdx=0; tutorialIdx=0; updateSeek();
+  pausePlayback(); playIdx=0; tutorialIdx=0;
+  pbStartSongT=0;
+  updateSeek(0);
 }
 function restartPlayback(){
   stopPlayback();
+  pbStartSongT=0;
   clearAllKeys("next","playing","correct","done");
+  activeBarNotes.clear();
   renderChips();
+  drawFallBars(); // static frame at t=0
   if(currentMode==="tutorial"){ showTutorialPrompt(); } else { $("nextNoteDisplay").classList.remove("visible"); }
 }
 function toggleLoop(){
@@ -978,16 +1224,21 @@ function setSpeed(v){
 }
 function seek(e){
   if(!detectedNotes.length) return;
-  const rect=e.currentTarget.getBoundingClientRect();
-  const pct=(e.clientX-rect.left)/rect.width;
-  const total=detectedNotes.reduce((s,n)=>s+n.duration,0);
-  let elapsed=0,idx=0;
-  for(let i=0;i<detectedNotes.length;i++){
-    if((elapsed+detectedNotes[i].duration)/total>=pct){idx=i;break;}
-    elapsed+=detectedNotes[i].duration; idx=i+1;
-  }
+  const rect = e.currentTarget.getBoundingClientRect();
+  const pct  = (e.clientX-rect.left)/rect.width;
+  const last  = detectedNotes.at(-1);
+  const total = last.start_time + last.duration;
+  const seekTo = Math.max(0, pct*total);
+
+  // Find note index at seekTo position
+  let idx = detectedNotes.findIndex(n=>n.start_time >= seekTo);
+  if(idx < 0) idx = detectedNotes.length;
+
   const wasPlaying=isPlaying; pausePlayback();
-  playIdx=idx; tutorialIdx=idx; updateSeek();
+  playIdx=idx; tutorialIdx=idx;
+  pbStartSongT=seekTo;
+  drawFallBars(); // static preview at new position
+  updateSeek();
   if(wasPlaying) startPlayback();
 }
 
@@ -1077,10 +1328,11 @@ function scrollToKey(note){
 
 function updateSeek(idx){
   if(!detectedNotes.length) return;
-  const i = idx??playIdx;
-  const total=detectedNotes.reduce((s,n)=>s+n.duration,0);
-  const elapsed=detectedNotes.slice(0,i).reduce((s,n)=>s+n.duration,0);
-  const pct=total>0?(elapsed/total)*100:0;
+  const last  = detectedNotes.at(-1);
+  const total = last.start_time + last.duration;
+  const i     = idx ?? playIdx;
+  const elapsed = detectedNotes[i]?.start_time ?? total;
+  const pct   = total>0 ? Math.min(elapsed/total,1)*100 : 0;
   $("seekFill").style.width=pct+"%";
   $("tElapsed").textContent=fmtTime(elapsed/playSpeed);
   $("tTotal").textContent=fmtTime(total/playSpeed);
@@ -1113,9 +1365,17 @@ function setStatus(type,msg){
 function fmtBytes(b){ return b<1024?b+"B":b<1048576?(b/1024).toFixed(1)+"KB":(b/1048576).toFixed(1)+"MB"; }
 function fmtTime(s){ return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`; }
 
+// ── Scroll sync: keyboard drives falls canvas ─────────
+document.addEventListener("DOMContentLoaded", ()=>{
+  const kw = $("keyboardWrap");
+  const fw = $("fallsScrollWrap");
+  if(kw && fw) kw.addEventListener("scroll", ()=>{ fw.scrollLeft = kw.scrollLeft; });
+});
+
 // ── Init ──────────────────────────────────────────
 buildKeys();
 drawIdleWave();
+drawFallBars(); // initial empty frame
 
 fetch(API+"/").then(()=>setStatus("on","Backend connected")).catch(()=>setStatus("","Backend offline — demo available"));
 </script>

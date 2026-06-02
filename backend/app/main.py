@@ -23,7 +23,6 @@ from pydantic import BaseModel
 # Optional heavy deps — gracefully degrade if not installed
 try:
     import librosa
-    import librosa.display
     LIBROSA_AVAILABLE = True
 except ImportError:
     LIBROSA_AVAILABLE = False

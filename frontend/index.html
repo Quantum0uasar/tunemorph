@@ -738,11 +738,17 @@ let pbStartAudioT = 0;   // actx.currentTime when playback began
 let pbStartSongT  = 0;   // song-seconds at which playback began
 
 function songTime(){
-  if(!actx || !isPlaying) return pbStartSongT;
+  if(!isPlaying) return pbStartSongT;
+  // In playback mode the HTML audio element is the clock — use it directly
+  if(currentMode==="playback" && originalAudio) return originalAudio.currentTime;
+  if(!actx) return pbStartSongT;
   return pbStartSongT + (actx.currentTime - pbStartAudioT) * playSpeed;
 }
 
-// ── Scheduled audio nodes (Step 3) ────────────────────
+// ── Original audio (playback mode) ────────────────────
+let originalAudio = null;   // HTMLAudioElement fed from /audio/{id}.wav
+
+// ── Scheduled audio nodes (tutorial/practice modes) ───
 let scheduledNodes = [];
 
 // ── Falling bars ───────────────────────────────────────
@@ -968,14 +974,14 @@ function drawFallBars(){
   // Update seek bar smoothly from song time
   updateSeekFromTime(t);
 
-  // Check sequence end
-  if(isPlaying && detectedNotes.length){
+  // Check sequence end (playback mode delegates to originalAudio.onended)
+  if(isPlaying && detectedNotes.length && currentMode!=="playback"){
     const last = detectedNotes.at(-1);
     if(t >= last.start_time + last.duration){
       if(isLooping){
         pbStartSongT=0; pbStartAudioT=actx?actx.currentTime:0;
         lastChipIdx=-1;
-        if(currentMode==="playback") scheduleAllNotes();
+        scheduleAllNotes(); // tutorial/practice loop: reschedule tones
       } else pausePlayback();
     }
   }
@@ -1356,7 +1362,7 @@ async function runAnalysis(){
 }
 
 function loadResult(data){
-  const {detected_notes,tempo,key_center,duration,lesson} = data.analysis;
+  const {detected_notes,tempo,key_center,duration,lesson,audio_url} = data.analysis;
   let cursor=0;
   detectedNotes = detected_notes.map(n=>{
     const note = typeof n==="string" ? n : n.note;
@@ -1365,11 +1371,26 @@ function loadResult(data){
     cursor = st + dur;
     return {note, start_time: st, duration: dur};
   });
+
+  // Set up original audio for playback mode
+  if(originalAudio){ originalAudio.pause(); originalAudio=null; }
+  if(audio_url){
+    originalAudio = new Audio(API + audio_url);
+    originalAudio.preload = "auto";
+    originalAudio.onended = ()=>{
+      if(currentMode==="playback" && isPlaying){
+        if(isLooping){ originalAudio.currentTime=0; originalAudio.play().catch(()=>{}); }
+        else pausePlayback();
+      }
+    };
+  }
+
   renderResults(detected_notes.length, tempo, key_center, duration, lesson);
   afterLoad();
 }
 
 function loadDemo(){
+  if(originalAudio){ originalAudio.pause(); originalAudio=null; }
   const scale=["C4","E4","G4","C5","B4","A4","G4","E4","D4","F4","A4","C5","B4","G4","E4","C4"];
   let t=0;
   detectedNotes = scale.map(n=>{ const s={note:n,start_time:t,duration:0.45}; t+=0.45; return s; });
@@ -1418,21 +1439,29 @@ function startPlayback(){
   if(!detectedNotes.length) return;
   ensureAudio(); isPlaying=true;
   pbStartAudioT = actx.currentTime;
-  lastChipIdx   = -1; // force chip re-render on start
+  lastChipIdx   = -1;
   $("iconPlay").style.display="none"; $("iconPause").style.display="block";
   if(currentMode==="tutorial"){
     runTutorial();
   } else if(currentMode==="practice"){
-    practiceExpectedNote = null; // will be set by rAF loop
+    practiceExpectedNote = null;
     startFallAnim();
   } else {
-    runAutoPlay();   // schedules audio
-    startFallAnim(); // drives visuals
+    // Playback mode — stream the original audio; rAF loop drives all visuals
+    if(originalAudio){
+      originalAudio.currentTime  = pbStartSongT;
+      originalAudio.playbackRate = playSpeed;
+      originalAudio.play().catch(e=>console.warn("Audio play error:", e));
+    } else {
+      scheduleAllNotes(); // fallback: demo mode has no original audio
+    }
+    startFallAnim();
   }
 }
 function pausePlayback(){
-  if(isPlaying && actx) pbStartSongT = songTime(); // save position
+  if(isPlaying) pbStartSongT = songTime(); // save position before stopping
   isPlaying=false;
+  if(originalAudio && !originalAudio.paused) originalAudio.pause();
   $("iconPlay").style.display="block"; $("iconPause").style.display="none";
   clearTimeout(playTimer);
   cancelScheduledNotes();
@@ -1444,6 +1473,7 @@ function pausePlayback(){
 function stopPlayback(){
   pausePlayback(); playIdx=0; tutorialIdx=0;
   pbStartSongT=0;
+  if(originalAudio) originalAudio.currentTime=0;
   updateSeek(0);
 }
 function restartPlayback(){
@@ -1467,6 +1497,7 @@ function toggleLoop(){
 }
 function setSpeed(v){
   playSpeed=parseFloat(v); $("speedVal").textContent=v+"×";
+  if(originalAudio) originalAudio.playbackRate=playSpeed;
 }
 function seek(e){
   if(!detectedNotes.length) return;
@@ -1483,6 +1514,7 @@ function seek(e){
   const wasPlaying=isPlaying; pausePlayback();
   playIdx=idx; tutorialIdx=idx;
   pbStartSongT=seekTo;
+  if(originalAudio) originalAudio.currentTime=seekTo;
   drawFallBars(); // static preview at new position
   updateSeek();
   if(wasPlaying) startPlayback();

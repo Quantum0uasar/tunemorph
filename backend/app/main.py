@@ -8,6 +8,7 @@ import io
 import os
 import shutil
 import tempfile
+import time
 import uuid
 import logging
 from pathlib import Path
@@ -55,6 +56,20 @@ app.add_middleware(
 
 RECORDINGS_DIR = Path(tempfile.gettempdir()) / "tunemorph_recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+TEMP_AUDIO_DIR = Path(tempfile.gettempdir()) / "tunemorph_audio"
+TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def purge_old_audio() -> None:
+    """Delete temp audio files older than 30 minutes."""
+    cutoff = time.time() - 1800
+    for f in TEMP_AUDIO_DIR.glob("*.wav"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 # ─── Note / Music utilities ────────────────────────────────────────────────────
 
@@ -261,6 +276,7 @@ class AnalysisResult(BaseModel):
     key_center: Optional[str] = None
     duration: Optional[float] = None
     lesson: Optional[str] = None
+    audio_url: Optional[str] = None
 
 
 class AnalysisResponse(BaseModel):
@@ -328,10 +344,19 @@ async def analyze_audio(
         tmp_path = save_upload_to_temp(file)
         logger.info(f"Processing: {file.filename} ({len(content)} bytes)")
 
+        purge_old_audio()  # clean up stale files on each request
+
+        audio_url: Optional[str] = None
         if LIBROSA_AVAILABLE:
             # Convert to WAV for reliable librosa loading
             wav_path = convert_to_wav(tmp_path)
             analysis_raw = detect_notes_librosa(wav_path)
+
+            # Keep a copy in TEMP_AUDIO_DIR so the frontend can stream it back
+            audio_id = uuid.uuid4().hex
+            audio_copy = TEMP_AUDIO_DIR / f"{audio_id}.wav"
+            shutil.copy2(wav_path, audio_copy)
+            audio_url = f"/audio/{audio_id}.wav"
         else:
             analysis_raw = detect_notes_stub(file.filename)
 
@@ -344,6 +369,7 @@ async def analyze_audio(
             key_center=analysis_raw.get("key_center"),
             duration=analysis_raw.get("duration"),
             lesson=lesson,
+            audio_url=audio_url,
         )
 
         logger.info(f"Detected {len(note_events)} notes in {file.filename}")
@@ -363,6 +389,18 @@ async def analyze_audio(
             tmp_path.unlink(missing_ok=True)
         if wav_path and wav_path != tmp_path and wav_path.exists():
             wav_path.unlink(missing_ok=True)
+
+
+@app.get("/audio/{filename}", tags=["Audio"])
+def serve_audio(filename: str):
+    """Stream a previously analysed audio file back to the browser."""
+    # Guard against path traversal
+    if "/" in filename or "\\" in filename or ".." in filename or not filename.endswith(".wav"):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path = TEMP_AUDIO_DIR / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio not found or expired")
+    return FileResponse(path, media_type="audio/wav")
 
 
 @app.post("/recordings", response_model=RecordingInfo, tags=["Recordings"])

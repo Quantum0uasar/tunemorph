@@ -669,15 +669,15 @@ function playTone(note, dur=0.5){
   const freq = noteFreq(k.name, k.oct);
   const osc = actx.createOscillator();
   const env = actx.createGain();
-  osc.type = "triangle"; osc.frequency.value = freq;
+  osc.type = "sine"; osc.frequency.value = freq;
   const t = actx.currentTime;
   env.gain.setValueAtTime(0,t);
-  env.gain.linearRampToValueAtTime(1, t+0.005);
-  env.gain.linearRampToValueAtTime(0.6, t+0.05);
-  env.gain.setValueAtTime(0.6, t+dur-0.2);
-  env.gain.linearRampToValueAtTime(0, t+dur);
+  env.gain.linearRampToValueAtTime(1, t+0.01);
+  env.gain.linearRampToValueAtTime(0.6, t+0.06);
+  env.gain.setValueAtTime(0.6, t+dur-0.15);
+  env.gain.linearRampToValueAtTime(0, t+dur+0.08);
   osc.connect(env).connect(masterGain);
-  osc.start(t); osc.stop(t+dur+0.05);
+  osc.start(t); osc.stop(t+dur+0.15);
 }
 
 // Schedule a note at a specific AudioContext time (Step 3)
@@ -687,14 +687,14 @@ function scheduleTone(note, dur, when){
   const freq = noteFreq(k.name, k.oct);
   const osc  = actx.createOscillator();
   const env  = actx.createGain();
-  osc.type = "triangle"; osc.frequency.value = freq;
+  osc.type = "sine"; osc.frequency.value = freq;
   env.gain.setValueAtTime(0, when);
-  env.gain.linearRampToValueAtTime(1, when+0.005);
-  env.gain.linearRampToValueAtTime(0.6, when+0.04);
+  env.gain.linearRampToValueAtTime(1, when+0.01);
+  env.gain.linearRampToValueAtTime(0.6, when+0.06);
   env.gain.setValueAtTime(0.6, when+dur-0.1);
-  env.gain.linearRampToValueAtTime(0, when+dur);
+  env.gain.linearRampToValueAtTime(0, when+dur+0.08);
   osc.connect(env).connect(masterGain);
-  osc.start(when); osc.stop(when+dur+0.05);
+  osc.start(when); osc.stop(when+dur+0.15);
   scheduledNodes.push(osc);
 }
 

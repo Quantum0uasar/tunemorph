@@ -170,8 +170,8 @@ def detect_notes_librosa(wav_path: Path) -> Dict[str, Any]:
     # Works better than basic autocorrelation for melodic content
     f0, voiced_flag, voiced_probs = librosa.pyin(
         y,
-        fmin=librosa.note_to_hz("C2"),
-        fmax=librosa.note_to_hz("C7"),
+        fmin=librosa.note_to_hz("C3"),
+        fmax=librosa.note_to_hz("C6"),
         sr=sr,
         frame_length=2048,
         hop_length=512,
@@ -192,14 +192,19 @@ def detect_notes_librosa(wav_path: Path) -> Dict[str, Any]:
         segment_voiced = voiced_flag[start_frame:end_frame]
         valid_freqs = segment_f0[segment_voiced & (segment_f0 > 0)]
 
-        if len(valid_freqs) == 0:
+        # Require at least 4 voiced frames to avoid silence artifacts
+        if len(valid_freqs) < 4:
             continue
 
         # Use median frequency to reduce noise
         median_freq = float(np.median(valid_freqs))
-        note_name = freq_to_note(median_freq)
-        if note_name is None:
+
+        # Reconstruct note name via MIDI number — more reliable than hz_to_note
+        # because it avoids rounding ambiguities at octave boundaries.
+        midi_num = int(round(librosa.hz_to_midi(median_freq)))
+        if midi_num < 21 or midi_num > 108:
             continue
+        note_name = librosa.midi_to_note(midi_num)
 
         notes_out.append({
             "note": note_name,
@@ -207,6 +212,9 @@ def detect_notes_librosa(wav_path: Path) -> Dict[str, Any]:
             "duration": round(note_dur, 3),
             "freq": round(median_freq, 2),
         })
+
+    # Sort by start_time (onsets should already be ordered, but be explicit)
+    notes_out.sort(key=lambda n: n["start_time"])
 
     # Cap at 64 notes for playback UX
     notes_out = notes_out[:64]
